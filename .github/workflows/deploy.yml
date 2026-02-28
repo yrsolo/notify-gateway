@@ -48,6 +48,9 @@ jobs:
       - name: Validate required config
         env:
           YC_SA_JSON_CREDENTIALS: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          NOTIFY_API_KEYS: ${{ secrets.NOTIFY_API_KEYS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
           test -n "${YC_SA_JSON_CREDENTIALS:-}" || { echo "YC_SA_JSON_CREDENTIALS secret is required" >&2; exit 1; }
@@ -55,6 +58,11 @@ jobs:
           test -n "${YC_FUNCTION_NAME:-}" || { echo "YC_FUNCTION_NAME (or YC_CLOUD_FUNCTION_NAME) is required" >&2; exit 1; }
           test -n "${YC_SERVICE_ACCOUNT_ID:-}" || { echo "YC_SERVICE_ACCOUNT_ID is required (vars or secrets)" >&2; exit 1; }
           test -n "${YC_FUNCTION_ENTRYPOINT:-}" || { echo "YC_FUNCTION_ENTRYPOINT is required" >&2; exit 1; }
+          if [[ "${DRY_RUN}" != "true" ]]; then
+            test -n "${NOTIFY_API_KEYS:-}" || { echo "NOTIFY_API_KEYS secret is required for deploy" >&2; exit 1; }
+            test -n "${TELEGRAM_BOT_TOKEN:-}" || { echo "TELEGRAM_BOT_TOKEN secret is required for deploy" >&2; exit 1; }
+            test -n "${TELEGRAM_CHAT_ID:-}" || { echo "TELEGRAM_CHAT_ID (vars or secrets) is required for deploy" >&2; exit 1; }
+          fi
 
       - name: Install dependencies
         run: |
@@ -72,6 +80,10 @@ jobs:
           runtime: ${{ env.FUNCTION_RUNTIME }}
           entrypoint: ${{ env.YC_FUNCTION_ENTRYPOINT }}
           service-account: ${{ env.YC_SERVICE_ACCOUNT_ID }}
+          environment: |
+            NOTIFY_API_KEYS=${{ secrets.NOTIFY_API_KEYS }}
+            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+            TELEGRAM_CHAT_ID=${{ vars.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
           include: |
             src/**
           exclude: |
