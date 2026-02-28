@@ -14,6 +14,10 @@
 - Текущий операционный статус и блокеры Codex/YC: `docs/STATUS.md`
 - Security guardrails для CI: `docs/security/CI_GUARDRAILS.md`
 - Deploy runbook и rollback: `docs/DEPLOY_RUNBOOK.md`
+- SLO-lite и observability checks: `docs/SLO_AND_OBSERVABILITY.md`
+- Регламент ротации секретов: `docs/SECRET_ROTATION.md`
+- Матрица IAM least privilege: `docs/IAM_LEAST_PRIVILEGE.md`
+- On-call/ops playbook: `docs/ONCALL_OPS_PLAYBOOK.md`
 
 ## Цель MVP
 

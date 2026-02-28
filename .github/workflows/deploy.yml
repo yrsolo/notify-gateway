@@ -28,6 +28,8 @@ jobs:
       FUNCTION_SOURCE_DIR: src
       FUNCTION_RUNTIME: python311
       FUNCTION_ENTRYPOINT: handler.handler
+      YC_FUNCTION_ID: ${{ vars.YC_FUNCTION_ID }}
+      NOTIFY_ENDPOINT: ${{ vars.NOTIFY_ENDPOINT }}
 
     steps:
       - name: Checkout
@@ -52,6 +54,8 @@ jobs:
           test -n "${YC_FUNCTION_NAME}" || { echo "YC_FUNCTION_NAME is required" >&2; exit 1; }
           test -n "${YC_API_GW_NAME}" || { echo "YC_API_GW_NAME is required" >&2; exit 1; }
           test -n "${YC_SERVICE_ACCOUNT_ID}" || { echo "YC_SERVICE_ACCOUNT_ID is required" >&2; exit 1; }
+          test -n "${YC_FUNCTION_ID}" || { echo "YC_FUNCTION_ID is required" >&2; exit 1; }
+          test -n "${NOTIFY_ENDPOINT}" || { echo "NOTIFY_ENDPOINT is required" >&2; exit 1; }
 
       - name: Prepare IAM token
         env:
@@ -124,4 +128,20 @@ jobs:
             infra/scripts/yc_apply_apigw.sh --dry-run
           else
             infra/scripts/yc_apply_apigw.sh
+          fi
+
+      - name: Smoke-check /notify
+        env:
+          NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${NOTIFY_API_KEY:-}" ]]; then
+            echo "NOTIFY_API_KEY secret is required" >&2
+            exit 1
+          fi
+
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            infra/scripts/smoke_notify.sh --dry-run
+          else
+            infra/scripts/smoke_notify.sh
           fi

@@ -282,3 +282,181 @@ Stage 2 — Deploy automation (main -> YC Function) ✅ завершена.
 2. **S3-T02** Интеграция smoke-check в deploy workflow.
 3. **S3-T03** Уточнение rollback-runbook под операционное применение.
 4. **S3-T04** Формализация SLO-lite и operational checks.
+
+---
+
+## 2026-02-28 — S3-T01
+
+### Stage
+Stage 3 — Runtime validation & observability.
+
+### Done
+- Добавлен `infra/scripts/smoke_notify.sh`.
+- Реализовано:
+  - `set -euo pipefail`;
+  - обязательные env (`NOTIFY_ENDPOINT`, `NOTIFY_API_KEY`);
+  - валидация HTTP-кода и JSON-ответа (`ok=true`, `telegram_message_id`);
+  - безопасные режимы `--dry-run` и `--skip-send`.
+
+### Blockers
+- Нет.
+
+### Next
+- Выполнить S3-T02: встроить smoke-check в deploy pipeline.
+
+---
+
+## 2026-02-28 — S3-T02
+
+### Stage
+Stage 3 — Runtime validation & observability.
+
+### Done
+- Обновлён `.github/workflows/deploy.yml`:
+  - добавлены env `YC_FUNCTION_ID` и `NOTIFY_ENDPOINT`.
+  - в шаге валидации конфигурации добавлены проверки новых обязательных переменных.
+  - добавлен шаг `Smoke-check /notify` с использованием `infra/scripts/smoke_notify.sh`.
+- Падение smoke-check приводит к fail workflow.
+
+### Blockers
+- Нет.
+
+### Next
+- Выполнить S3-T03: уточнить rollback-runbook.
+
+---
+
+## 2026-02-28 — S3-T03
+
+### Stage
+Stage 3 — Runtime validation & observability.
+
+### Done
+- Обновлён `docs/DEPLOY_RUNBOOK.md`:
+  - добавлены operational trigger-criteria rollback;
+  - описаны function/API gateway rollback шаги;
+  - добавлена пост-rollback верификация.
+
+### Blockers
+- Нет.
+
+### Next
+- Выполнить S3-T04: зафиксировать SLO-lite и operational checks.
+
+---
+
+## 2026-02-28 — S3-T04
+
+### Stage
+Stage 3 — Runtime validation & observability.
+
+### Done
+- Добавлен `docs/SLO_AND_OBSERVABILITY.md`.
+- Зафиксированы:
+  - SLO-lite критерии;
+  - post-deploy и ежедневные operational checks;
+  - источники наблюдаемости;
+  - триггеры эскалации и команды triage.
+
+### Blockers
+- Нет.
+
+### Next
+- Закрыть Stage 3 и перейти к Stage 4.
+
+---
+
+## 2026-02-28 — Stage 3 complete / transition
+
+### Stage
+Stage 3 — Runtime validation & observability ✅ завершена.
+
+### Done
+- Все задачи S3-T01…S3-T04 закрыты.
+- Definition of Done Stage 3 выполнен:
+  - smoke-check реализован и встроен в deploy pipeline;
+  - rollback-runbook расширен операционными шагами;
+  - SLO-lite и observability checks зафиксированы.
+- `CURRENT_STAGE_TASKS.md` переключён на Stage 4 и заполнен первым набором атомарных задач.
+
+### Blockers
+- Нет.
+
+### Next
+Первый набор атомарных задач для **Stage 4 — Production readiness**:
+1. **S4-T01** Регламент ротации секретов.
+2. **S4-T02** Матрица IAM least privilege.
+3. **S4-T03** On-call/ops playbook и эскалации.
+
+---
+
+## 2026-02-28 — S4-T01
+
+### Stage
+Stage 4 — Production readiness.
+
+### Done
+- Добавлен `docs/SECRET_ROTATION.md`.
+- Зафиксированы scope секретов, периодичность ротации, пошаговый процесс, emergency-режим и checklist верификации после ротации.
+
+### Blockers
+- Нет.
+
+### Next
+- Выполнить S4-T02: подготовить IAM least-privilege матрицу.
+
+---
+
+## 2026-02-28 — S4-T02
+
+### Stage
+Stage 4 — Production readiness.
+
+### Done
+- Добавлен `docs/IAM_LEAST_PRIVILEGE.md`.
+- Зафиксирован текущий baseline ролей и целевая least-privilege матрица для deploy SA, integration SA и read-only наблюдаемости.
+- Добавлен checklist hardening/acceptance после ужесточения прав.
+
+### Blockers
+- Нет.
+
+### Next
+- Выполнить S4-T03: обновить on-call/ops playbook.
+
+---
+
+## 2026-02-28 — S4-T03
+
+### Stage
+Stage 4 — Production readiness.
+
+### Done
+- Добавлен `docs/ONCALL_OPS_PLAYBOOK.md`.
+- Описаны каналы эскалации, SLA реакции, triage checklist и playbook по типовым инцидентам (smoke-check fail, 401/403, 5xx/Telegram errors).
+
+### Blockers
+- Нет.
+
+### Next
+- Закрыть Stage 4 и зафиксировать итоговый статус программы.
+
+---
+
+## 2026-02-28 — Stage 4 complete / program complete
+
+### Stage
+Stage 4 — Production readiness ✅ завершена.
+
+### Done
+- Все задачи S4-T01…S4-T03 закрыты.
+- Definition of Done Stage 4 выполнен:
+  - регламент ротации секретов оформлен;
+  - least-privilege IAM матрица сформирована;
+  - on-call/ops playbook зафиксирован.
+- Все стадии Stage 0..4 отмечены закрытыми в execution-трекере.
+
+### Blockers
+- Нет.
+
+### Next
+- Поддерживающий режим: выполнять только change-requests и актуализацию runbook/политик по мере изменений инфраструктуры.
