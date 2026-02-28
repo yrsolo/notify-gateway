@@ -14,6 +14,7 @@
 - `YC_API_GW_NAME`
 - `YC_SERVICE_ACCOUNT_ID`
 - `NOTIFY_ENDPOINT` (полный URL для `POST /notify`)
+- `NOTIFY_PUBLIC_BASE_URL` (опционально, например `https://api.solofarm.ru`; если задан, используется как публичный endpoint для smoke-check и записи в Lockbox)
 
 ### GitHub Actions Secrets
 - `YC_SA_JSON_CREDENTIALS` (service account key JSON)
@@ -27,6 +28,7 @@
 2. Проверка обязательных env и аутентификация через `YC_SA_JSON_CREDENTIALS`.
 3. Деплой функции через `yc-actions/yc-sls-function@v4`.
 4. Применение API Gateway и вычисление `NOTIFY_ENDPOINT` через `infra/scripts/yc_bootstrap_notify_endpoint.sh`.
+   - Если задан `NOTIFY_PUBLIC_BASE_URL`, endpoint формируется как `<NOTIFY_PUBLIC_BASE_URL>/notify` и сохраняется в Lockbox/CI env вместо технического домена `*.apigw.yandexcloud.net`.
 5. Smoke-check `POST /notify` через `infra/scripts/smoke_notify.sh`.
 
 
@@ -64,6 +66,18 @@ infra/scripts/yc_bootstrap_notify_endpoint.sh
 - создаст/обновит API Gateway `notify-gateway-gw` (или `YC_API_GW_NAME`, если передан);
 - выведет готовые значения `YC_API_GW_NAME` и `NOTIFY_ENDPOINT`;
 - при указании `LOCKBOX_SECRET_ID`/`LOCKBOX_SECRET_NAME` создаст новую версию секрета в Lockbox с этими ключами.
+
+
+## 2.2) Публичный домен для API
+
+Если API должен отвечать на вашем домене (например, `api.solofarm.ru`):
+
+1. Настройте DNS-запись в зоне домена:
+   - `api` -> `CNAME` на домен API Gateway (`<gateway-id>.apigw.yandexcloud.net`)
+   - либо `A`/`CNAME` на внешний ingress/балансировщик, если используете его перед gateway.
+2. Выпустите TLS-сертификат для `api.<ваш-домен>` (Yandex Certificate Manager или внешний сертификат).
+3. Добавьте GitHub Variable/Secret `NOTIFY_PUBLIC_BASE_URL=https://api.<ваш-домен>`.
+4. Запустите deploy workflow — smoke-check и Lockbox получат публичный endpoint.
 
 ## 3) Локальные проверки перед релизом
 
