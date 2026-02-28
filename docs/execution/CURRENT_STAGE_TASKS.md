@@ -32,6 +32,16 @@
     2. Есть playbook по типовым инцидентам.
   - Артефакт проверки: `docs/ONCALL_OPS_PLAYBOOK.md`.
   - Статус: `done`
+
+- [x] **S4-T04** Добавить совместимость с alias `YC_CLOUD_FUNCTION_NAME` для deploy workflow.
+  - Owner: agent
+  - Оценка: 0.25d
+  - Критерии приёмки:
+    1. Workflow принимает `YC_FUNCTION_NAME` или alias `YC_CLOUD_FUNCTION_NAME`.
+    2. Ошибка валидации подсказывает корректные имена переменных.
+  - Артефакт проверки: `.github/workflows/deploy.yml`.
+  - Статус: `done`
+
 Текущая стадия: **Stage 3 — Runtime validation & observability**.
 
 > Формат: ID / описание / owner / оценка / критерии приёмки / артефакт проверки / статус.
@@ -93,6 +103,7 @@ Stage 2 DoD: **выполнен**.
 - [x] S4-T01 завершена
 - [x] S4-T02 завершена
 - [x] S4-T03 завершена
+- [x] S4-T04 завершена
 
 ## Program status
 - Все стадии `Stage 0..4` закрыты по execution-трекеру.

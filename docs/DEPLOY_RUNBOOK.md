@@ -9,7 +9,7 @@
 
 ### GitHub Actions Variables (non-secret)
 - `YC_FOLDER_ID`
-- `YC_FUNCTION_NAME`
+- `YC_FUNCTION_NAME` (или `YC_CLOUD_FUNCTION_NAME` как alias)
 - `YC_FUNCTION_ID`
 - `YC_API_GW_NAME`
 - `YC_SERVICE_ACCOUNT_ID`

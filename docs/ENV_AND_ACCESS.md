@@ -35,6 +35,7 @@
 
 ### Идентификаторы ресурсов
 - `YC_FUNCTION_NAME` (config) — имя функции (например `notify-gateway`).
+  - Допустимый alias для окружения Codex/GitHub Variables: `YC_CLOUD_FUNCTION_NAME` (используется как fallback в workflow).
 - `YC_FUNCTION_ID` (config) — ID функции (если уже создана).
 - `YC_API_GW_NAME` (config) — имя API Gateway.
 - `YC_API_GW_ID` (config) — ID API Gateway (если уже создан).
