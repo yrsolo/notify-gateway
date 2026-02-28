@@ -49,6 +49,16 @@ jobs:
             echo "YC_FUNCTION_NAME=${YC_CLOUD_FUNCTION_NAME}" >> "$GITHUB_ENV"
           fi
 
+      - name: Validate required config
+        run: |
+          set -euo pipefail
+          test -n "${YC_FOLDER_ID}" || { echo "YC_FOLDER_ID is required" >&2; exit 1; }
+          test -n "${YC_FUNCTION_NAME:-}" || {
+            echo "YC_FUNCTION_NAME is required (or set YC_CLOUD_FUNCTION_NAME as alias)" >&2
+            exit 1
+          }
+          test -n "${YC_SERVICE_ACCOUNT_ID}" || { echo "YC_SERVICE_ACCOUNT_ID is required" >&2; exit 1; }
+
       - name: Prepare IAM token
         env:
           YC_TOKEN: ${{ secrets.YC_TOKEN }}
@@ -208,6 +218,7 @@ jobs:
           YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
         run: |
           set -euo pipefail
+          export YC_API_GW_NAME="${YC_API_GW_NAME:-notify-gateway-gw}"
 
           if [[ "${DRY_RUN}" == "true" ]]; then
             BOOTSTRAP_OUTPUT=$(infra/scripts/yc_bootstrap_notify_endpoint.sh --dry-run)
