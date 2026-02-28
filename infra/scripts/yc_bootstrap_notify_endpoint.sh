@@ -55,7 +55,7 @@ render_spec() {
     -e "s|<YOUR_SERVICE_ACCOUNT_ID>|${YC_SERVICE_ACCOUNT_ID}|g" \
     "${APIGW_SPEC_TEMPLATE}" > "${APIGW_SPEC_RENDERED}"
 
-  if rg -q '<YOUR_' "${APIGW_SPEC_RENDERED}"; then
+  if grep -q '<YOUR_' "${APIGW_SPEC_RENDERED}"; then
     echo "ERROR: rendered API Gateway spec still has unresolved placeholders" >&2
     exit 1
   fi
@@ -153,7 +153,6 @@ main() {
   require_cmd yc
   require_cmd jq
   require_cmd sed
-  require_cmd rg
 
   validate_env
   render_spec
