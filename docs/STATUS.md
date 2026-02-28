@@ -1,30 +1,45 @@
 # Текущий статус интеграции с Yandex Cloud (Cloud Codex)
 
-Обновлено: текущая итерация.
+Обновлено: 2026-02-28.
 
-## Что уже подтверждено
+## Что реализовано
 
-- `YC_TOKEN` доступен в runtime.
-- Доступ к YC API работает из текущего окружения.
-- Через API получены:
-  - cloud: `b1g6d49mf4scmtn4kjki` (`cloud-yrsolo`),
-  - folders: `b1grb7g3424n7dgl5qli` (`datalens`) и `b1g42qj26s1u7gv7bufm` (`read`).
-- В репозитории есть fallback-скрипт API-discovery для случаев без `yc` CLI.
+- Базовый сервис `POST /notify` с валидацией и тестами (`pytest`, `ruff`).
+- CI для pull request: линт + unit tests (`.github/workflows/ci.yml`).
+- Автоматизированный deploy workflow (`.github/workflows/deploy.yml`):
+  - деплой Cloud Function;
+  - bootstrap/обновление API Gateway;
+  - smoke-check `POST /notify`;
+  - dry-run fallback при неполных runtime-секретах.
+- Infra-скрипты для deploy и обслуживания:
+  - `infra/scripts/yc_collect_context.sh`
+  - `infra/scripts/yc_deploy_function.sh`
+  - `infra/scripts/yc_apply_apigw.sh`
+  - `infra/scripts/yc_bootstrap_notify_endpoint.sh`
+  - `infra/scripts/smoke_notify.sh`
+- Эксплуатационная документация закрыта:
+  - `docs/DEPLOY_RUNBOOK.md`
+  - `docs/SLO_AND_OBSERVABILITY.md`
+  - `docs/SECRET_ROTATION.md`
+  - `docs/IAM_LEAST_PRIVILEGE.md`
+  - `docs/ONCALL_OPS_PLAYBOOK.md`
 
-## Текущий фокус
+## Стадийный статус
 
-Переход к старту цикла разработки:
-1. Зафиксировать список обязательных данных/секретов для MVP.
-2. Проверить, какие из них получаем из YC API, какие — из Lockbox.
-3. Подготовить целевую структуру репозитория для CI/CD и деплоя.
-4. Подготовить план GitHub Actions: сбор env/secrets из Lockbox и деплой в Cloud Function + API Gateway.
+- Stage 0 — Discovery & readiness baseline: ✅
+- Stage 1 — Repo hardening: ✅
+- Stage 2 — Deploy automation: ✅
+- Stage 3 — Runtime validation & observability: ✅
+- Stage 4 — Production readiness: ✅
+
+Текущий режим: **maintenance** (точечные улучшения и синхронизация документации под изменения).
+
+## Текущие блокеры
+
+- Отсутствует настроенный remote `origin` в локальном окружении контейнера, поэтому обязательная синхронизация `git fetch origin && git rebase origin/main` недоступна в этом раннере.
 
 ## Следующие шаги
 
-- На базе `docs/PLAN.md` реализовать итерацию 1 (repo hardening):
-  - каркас `infra/env`, `infra/function/env`, `infra/scripts`,
-  - `ci.yml` для тестов.
-- Далее итерация 2:
-  - `deploy.yml` для `main`,
-  - скрипты `yc_collect_context.sh` и `yc_deploy_function.sh`,
-  - smoke-check после деплоя.
+1. Поддерживать актуальность runbook при изменении workflow/infra-скриптов.
+2. Проверить боевой deploy из GitHub Environment `production` после обновления DNS (`NOTIFY_PUBLIC_BASE_URL`, если используется кастомный домен).
+3. Периодически подтверждать least-privilege и ротацию секретов по регламенту.
