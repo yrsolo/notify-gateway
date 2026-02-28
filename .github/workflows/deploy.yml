@@ -1,0 +1,127 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run deploy in dry-run mode"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      YC_FOLDER_ID: ${{ vars.YC_FOLDER_ID }}
+      YC_FUNCTION_NAME: ${{ vars.YC_FUNCTION_NAME }}
+      YC_API_GW_NAME: ${{ vars.YC_API_GW_NAME }}
+      YC_SERVICE_ACCOUNT_ID: ${{ vars.YC_SERVICE_ACCOUNT_ID }}
+      FUNCTION_SOURCE_DIR: src
+      FUNCTION_RUNTIME: python311
+      FUNCTION_ENTRYPOINT: handler.handler
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq zip
+
+      - name: Install YC CLI
+        run: |
+          set -euo pipefail
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
+          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
+
+      - name: Validate required config
+        run: |
+          set -euo pipefail
+          test -n "${YC_FOLDER_ID}" || { echo "YC_FOLDER_ID is required" >&2; exit 1; }
+          test -n "${YC_FUNCTION_NAME}" || { echo "YC_FUNCTION_NAME is required" >&2; exit 1; }
+          test -n "${YC_API_GW_NAME}" || { echo "YC_API_GW_NAME is required" >&2; exit 1; }
+          test -n "${YC_SERVICE_ACCOUNT_ID}" || { echo "YC_SERVICE_ACCOUNT_ID is required" >&2; exit 1; }
+
+      - name: Prepare IAM token
+        env:
+          YC_TOKEN: ${{ secrets.YC_TOKEN }}
+          YC_IAM_TOKEN: ${{ secrets.YC_IAM_TOKEN }}
+        run: |
+          set -euo pipefail
+          set +x
+          if [[ -n "${YC_IAM_TOKEN:-}" ]]; then
+            echo "::add-mask::${YC_IAM_TOKEN}"
+            echo "YC_IAM_TOKEN=${YC_IAM_TOKEN}" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          if [[ -z "${YC_TOKEN:-}" ]]; then
+            echo "Either YC_IAM_TOKEN or YC_TOKEN secret must be configured" >&2
+            exit 1
+          fi
+
+          IAM_JSON=$(curl -sS -X POST "https://iam.api.cloud.yandex.net/iam/v1/tokens" \
+            -H "Content-Type: application/json" \
+            -d "{\"yandexPassportOauthToken\":\"${YC_TOKEN}\"}")
+
+          IAM_TOKEN=$(jq -r '.iamToken // empty' <<<"$IAM_JSON")
+          if [[ -z "$IAM_TOKEN" ]]; then
+            echo "Failed to exchange YC_TOKEN to IAM token" >&2
+            exit 1
+          fi
+
+          echo "::add-mask::${IAM_TOKEN}"
+          echo "YC_IAM_TOKEN=${IAM_TOKEN}" >> "$GITHUB_ENV"
+
+      - name: Resolve dry-run mode
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "DRY_RUN=${{ inputs.dry_run }}" >> "$GITHUB_ENV"
+          else
+            echo "DRY_RUN=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Collect YC context
+        env:
+          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            infra/scripts/yc_collect_context.sh --dry-run
+          else
+            infra/scripts/yc_collect_context.sh
+          fi
+
+      - name: Deploy Function
+        env:
+          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            infra/scripts/yc_deploy_function.sh --dry-run
+          else
+            infra/scripts/yc_deploy_function.sh
+          fi
+
+      - name: Apply API Gateway spec
+        env:
+          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            infra/scripts/yc_apply_apigw.sh --dry-run
+          else
+            infra/scripts/yc_apply_apigw.sh
+          fi
