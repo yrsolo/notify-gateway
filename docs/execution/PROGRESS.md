@@ -522,3 +522,19 @@ Stage 4 — Production readiness (maintenance mode).
 
 ### Next
 - Перезапустить GitHub Actions deploy и убедиться, что bootstrap + smoke-check проходят на `ubuntu-latest`.
+## 2026-02-28 — S4-T07
+
+### Stage
+Stage 4 — Production readiness.
+
+### Done
+- Добавлена поддержка публичного домена API через переменную `NOTIFY_PUBLIC_BASE_URL` в `infra/scripts/yc_bootstrap_notify_endpoint.sh`.
+- Логика bootstrap обновлена: при заданном `NOTIFY_PUBLIC_BASE_URL` endpoint формируется как `<base>/notify`.
+- В `.github/workflows/deploy.yml` добавлен env `NOTIFY_PUBLIC_BASE_URL` (vars/secrets) для smoke-check/Lockbox.
+- Обновлён `docs/DEPLOY_RUNBOOK.md` с инструкцией по привязке домена (`api.<domain>`) и настройке переменных.
+
+### Blockers
+- Нет.
+
+### Next
+- Применить DNS-запись `api.<domain>` и задать `NOTIFY_PUBLIC_BASE_URL` в GitHub Environment `production`.

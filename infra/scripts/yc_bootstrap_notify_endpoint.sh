@@ -18,6 +18,7 @@ Optional environment variables:
   YC_API_GW_NAME      (default: notify-gateway-gw)
   APIGW_SPEC_TEMPLATE (default: infra/apigw.yaml)
   APIGW_SPEC_RENDERED (default: build/apigw.rendered.yaml)
+  NOTIFY_PUBLIC_BASE_URL Public API base URL (e.g. https://api.example.com)
   LOCKBOX_SECRET_ID   Lockbox secret id for syncing variables
   LOCKBOX_SECRET_NAME Lockbox secret name (used if id is not provided)
 
@@ -84,6 +85,13 @@ apply_gateway() {
 }
 
 resolve_endpoint() {
+  if [[ -n "${NOTIFY_PUBLIC_BASE_URL:-}" ]]; then
+    local base_url
+    base_url="${NOTIFY_PUBLIC_BASE_URL%/}"
+    printf '%s/notify' "$base_url"
+    return 0
+  fi
+
   local domain
   domain=$(yc serverless api-gateway list --folder-id "${YC_FOLDER_ID}" --format json \
     | jq -r --arg name "${YC_API_GW_NAME}" '.[] | select(.name == $name) | .domain' \
@@ -150,7 +158,10 @@ main() {
   APIGW_SPEC_RENDERED="${APIGW_SPEC_RENDERED:-build/apigw.rendered.yaml}"
   YC_API_GW_NAME="${YC_API_GW_NAME:-notify-gateway-gw}"
 
-  require_cmd yc
+  if [[ "$dry_run" == "false" || -z "${NOTIFY_PUBLIC_BASE_URL:-}" ]]; then
+    require_cmd yc
+  fi
+
   require_cmd jq
   require_cmd sed
 

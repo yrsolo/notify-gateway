@@ -52,6 +52,17 @@
   - Артефакт проверки: `infra/scripts/yc_bootstrap_notify_endpoint.sh`.
   - Статус: `done`
 
+
+- [x] **S4-T07** Поддержать публичный домен API в bootstrap/deploy.
+  - Owner: agent
+  - Оценка: 0.25d
+  - Критерии приёмки:
+    1. Bootstrap-скрипт поддерживает override endpoint через переменную окружения.
+    2. Deploy workflow прокидывает переменную публичного base URL.
+    3. Runbook описывает настройку домена и переменных.
+  - Артефакт проверки: `infra/scripts/yc_bootstrap_notify_endpoint.sh`, `.github/workflows/deploy.yml`, `docs/DEPLOY_RUNBOOK.md`.
+  - Статус: `done`
+
 Текущая стадия: **Stage 3 — Runtime validation & observability**.
 
 > Формат: ID / описание / owner / оценка / критерии приёмки / артефакт проверки / статус.
@@ -115,6 +126,7 @@ Stage 2 DoD: **выполнен**.
 - [x] S4-T03 завершена
 - [x] S4-T04 завершена
 - [x] S4-T06 завершена
+- [x] S4-T07 завершена
 
 ## Program status
 - Все стадии `Stage 0..4` закрыты по execution-трекеру.
