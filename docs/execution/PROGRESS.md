@@ -522,22 +522,3 @@ Stage 4 — Production readiness (maintenance mode).
 
 ### Next
 - Перезапустить GitHub Actions deploy и убедиться, что bootstrap + smoke-check проходят на `ubuntu-latest`.
-
----
-
-## 2026-03-01 — S4-T07 (maintenance): branch sync rule before edits
-
-### Stage
-Stage 4 — Production readiness (maintenance mode).
-
-### Done
-- В `AGENT.md` добавлено обязательное правило синхронизации рабочей ветки перед любыми правками:
-  - `git fetch origin`;
-  - затем `git rebase origin/main` (предпочтительно) или `git merge origin/main` как fallback.
-- Зафиксировано требование: начинать редактирование файлов только после синхронизации с актуальным `origin/main`, чтобы снизить риск конфликтов после merge в `main`.
-
-### Blockers
-- Нет.
-
-### Next
-- Применять правило синхронизации ветки как обязательный pre-flight шаг перед любыми будущими изменениями.
