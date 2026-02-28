@@ -482,3 +482,24 @@ Stage 4 — Production readiness (maintenance mode).
 
 ### Next
 - Проверить фактический запуск deploy workflow в CI с переменными из окружения `CODEX_DEV`.
+
+---
+
+## 2026-02-28 — S4-T05 (maintenance): bootstrap missing gateway/env vars
+
+### Stage
+Stage 4 — Production readiness (maintenance mode).
+
+### Done
+- Добавлен скрипт `infra/scripts/yc_bootstrap_notify_endpoint.sh`:
+  - рендерит `infra/apigw.yaml` с `YC_FUNCTION_ID` и `YC_SERVICE_ACCOUNT_ID`;
+  - создаёт/обновляет API Gateway по имени `YC_API_GW_NAME` (default `notify-gateway-gw`);
+  - вычисляет и печатает `NOTIFY_ENDPOINT` (`https://<gateway-domain>/notify`);
+  - опционально синхронизирует `YC_API_GW_NAME` и `NOTIFY_ENDPOINT` в Yandex Lockbox (`LOCKBOX_SECRET_ID` или `LOCKBOX_SECRET_NAME`).
+- `docs/DEPLOY_RUNBOOK.md` дополнен разделом bootstrap для автоматического восстановления `YC_API_GW_NAME` и `NOTIFY_ENDPOINT`.
+
+### Blockers
+- Нет.
+
+### Next
+- Проверить deploy workflow в GitHub Actions после обновления env/Lockbox.
