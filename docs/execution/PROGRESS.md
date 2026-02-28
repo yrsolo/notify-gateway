@@ -460,3 +460,25 @@ Stage 4 — Production readiness ✅ завершена.
 
 ### Next
 - Поддерживающий режим: выполнять только change-requests и актуализацию runbook/политик по мере изменений инфраструктуры.
+
+---
+
+## 2026-02-28 — S4-T04 (maintenance): deploy env alias compatibility
+
+### Stage
+Stage 4 — Production readiness (maintenance mode).
+
+### Done
+- В `.github/workflows/deploy.yml` добавлена поддержка alias переменной `YC_CLOUD_FUNCTION_NAME`:
+  - если `YC_FUNCTION_NAME` не задан, workflow автоматически использует `YC_CLOUD_FUNCTION_NAME`;
+  - валидация выводит явную подсказку про оба имени переменной.
+- Документация синхронизирована:
+  - `docs/DEPLOY_RUNBOOK.md` обновлён с указанием alias;
+  - `docs/ENV_AND_ACCESS.md` обновлён с примечанием по fallback-переменной.
+- `docs/execution/CURRENT_STAGE_TASKS.md` пополнен задачей S4-T04 как завершённой.
+
+### Blockers
+- Нет.
+
+### Next
+- Проверить фактический запуск deploy workflow в CI с переменными из окружения `CODEX_DEV`.

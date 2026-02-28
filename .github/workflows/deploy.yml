@@ -23,6 +23,7 @@ jobs:
     env:
       YC_FOLDER_ID: ${{ vars.YC_FOLDER_ID }}
       YC_FUNCTION_NAME: ${{ vars.YC_FUNCTION_NAME }}
+      YC_CLOUD_FUNCTION_NAME: ${{ vars.YC_CLOUD_FUNCTION_NAME }}
       YC_API_GW_NAME: ${{ vars.YC_API_GW_NAME }}
       YC_SERVICE_ACCOUNT_ID: ${{ vars.YC_SERVICE_ACCOUNT_ID }}
       FUNCTION_SOURCE_DIR: src
@@ -47,11 +48,21 @@ jobs:
           curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
           echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
 
+      - name: Normalize function name alias
+        run: |
+          set -euo pipefail
+          if [[ -z "${YC_FUNCTION_NAME:-}" && -n "${YC_CLOUD_FUNCTION_NAME:-}" ]]; then
+            echo "YC_FUNCTION_NAME=${YC_CLOUD_FUNCTION_NAME}" >> "$GITHUB_ENV"
+          fi
+
       - name: Validate required config
         run: |
           set -euo pipefail
           test -n "${YC_FOLDER_ID}" || { echo "YC_FOLDER_ID is required" >&2; exit 1; }
-          test -n "${YC_FUNCTION_NAME}" || { echo "YC_FUNCTION_NAME is required" >&2; exit 1; }
+          test -n "${YC_FUNCTION_NAME:-}" || {
+            echo "YC_FUNCTION_NAME is required (or set YC_CLOUD_FUNCTION_NAME as alias)" >&2
+            exit 1
+          }
           test -n "${YC_API_GW_NAME}" || { echo "YC_API_GW_NAME is required" >&2; exit 1; }
           test -n "${YC_SERVICE_ACCOUNT_ID}" || { echo "YC_SERVICE_ACCOUNT_ID is required" >&2; exit 1; }
           test -n "${YC_FUNCTION_ID}" || { echo "YC_FUNCTION_ID is required" >&2; exit 1; }
