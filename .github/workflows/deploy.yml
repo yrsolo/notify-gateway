@@ -22,10 +22,12 @@ jobs:
 
     env:
       YC_FOLDER_ID: ${{ vars.YC_FOLDER_ID }}
+      YC_FOLDER_ID_FALLBACK: ${{ secrets.YC_FOLDER_ID }}
       YC_FUNCTION_NAME: ${{ vars.YC_FUNCTION_NAME }}
       YC_CLOUD_FUNCTION_NAME: ${{ vars.YC_CLOUD_FUNCTION_NAME }}
       YC_API_GW_NAME: ${{ vars.YC_API_GW_NAME }}
       YC_SERVICE_ACCOUNT_ID: ${{ vars.YC_SERVICE_ACCOUNT_ID }}
+      YC_SERVICE_ACCOUNT_ID_FALLBACK: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
       FUNCTION_SOURCE_DIR: src
       FUNCTION_RUNTIME: python311
       FUNCTION_ENTRYPOINT: handler.handler
@@ -39,12 +41,6 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y jq zip
-
-      - name: Install YC CLI
-        run: |
-          set -euo pipefail
-          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
-          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
 
       - name: Normalize function name alias
         run: |
@@ -93,6 +89,88 @@ jobs:
 
           echo "::add-mask::${IAM_TOKEN}"
           echo "YC_IAM_TOKEN=${IAM_TOKEN}" >> "$GITHUB_ENV"
+
+      - name: Resolve dynamic deploy config
+        env:
+          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          FUNCTION_NAME="${YC_FUNCTION_NAME:-}"
+          FOLDER_ID="${YC_FOLDER_ID:-}"
+          SERVICE_ACCOUNT_ID="${YC_SERVICE_ACCOUNT_ID:-}"
+          API_GW_NAME="${YC_API_GW_NAME:-notify-gateway-gw}"
+
+          if [[ -z "$FOLDER_ID" && -n "${YC_FOLDER_ID_FALLBACK:-}" ]]; then
+            FOLDER_ID="${YC_FOLDER_ID_FALLBACK}"
+          fi
+
+          if [[ -z "$SERVICE_ACCOUNT_ID" && -n "${YC_SERVICE_ACCOUNT_ID_FALLBACK:-}" ]]; then
+            SERVICE_ACCOUNT_ID="${YC_SERVICE_ACCOUNT_ID_FALLBACK}"
+          fi
+
+          if [[ -z "$FOLDER_ID" && -n "$FUNCTION_NAME" ]]; then
+            echo "YC_FOLDER_ID is not set, trying auto-discovery by function name: ${FUNCTION_NAME}"
+
+            mapfile -t CLOUD_IDS < <(curl -sS -H "Authorization: Bearer ${YC_IAM_TOKEN}" \
+              "https://resource-manager.api.cloud.yandex.net/resource-manager/v1/clouds" \
+              | jq -r '.clouds[]?.id')
+
+            FOUND=0
+            for cloud_id in "${CLOUD_IDS[@]}"; do
+              mapfile -t FOLDER_IDS < <(curl -sS -H "Authorization: Bearer ${YC_IAM_TOKEN}" \
+                "https://resource-manager.api.cloud.yandex.net/resource-manager/v1/folders?cloudId=${cloud_id}" \
+                | jq -r '.folders[]?.id')
+
+              for folder_id in "${FOLDER_IDS[@]}"; do
+                fn_id=$(curl -sS -H "Authorization: Bearer ${YC_IAM_TOKEN}" \
+                  "https://serverless-functions.api.cloud.yandex.net/functions/v1/functions?folderId=${folder_id}" \
+                  | jq -r --arg name "$FUNCTION_NAME" '.functions[]? | select(.name == $name) | .id' \
+                  | head -n1)
+
+                if [[ -n "$fn_id" ]]; then
+                  FOLDER_ID="$folder_id"
+                  FOUND=1
+                  break
+                fi
+              done
+
+              if [[ "$FOUND" -eq 1 ]]; then
+                break
+              fi
+            done
+          fi
+
+          if [[ -n "$FOLDER_ID" && -z "$SERVICE_ACCOUNT_ID" ]]; then
+            mapfile -t SA_IDS < <(curl -sS -H "Authorization: Bearer ${YC_IAM_TOKEN}" \
+              "https://iam.api.cloud.yandex.net/iam/v1/serviceAccounts?folderId=${FOLDER_ID}" \
+              | jq -r '.serviceAccounts[]?.id')
+
+            if [[ "${#SA_IDS[@]}" -eq 1 ]]; then
+              SERVICE_ACCOUNT_ID="${SA_IDS[0]}"
+            fi
+          fi
+
+          echo "YC_FOLDER_ID=${FOLDER_ID}" >> "$GITHUB_ENV"
+          echo "YC_SERVICE_ACCOUNT_ID=${SERVICE_ACCOUNT_ID}" >> "$GITHUB_ENV"
+          echo "YC_API_GW_NAME=${API_GW_NAME}" >> "$GITHUB_ENV"
+
+      - name: Validate required config
+        run: |
+          set -euo pipefail
+          test -n "${YC_FOLDER_ID:-}" || { echo "YC_FOLDER_ID is required (vars.YC_FOLDER_ID or secret YC_FOLDER_ID)" >&2; exit 1; }
+          test -n "${YC_FUNCTION_NAME:-}" || {
+            echo "YC_FUNCTION_NAME is required (or set YC_CLOUD_FUNCTION_NAME as alias)" >&2
+            exit 1
+          }
+          test -n "${YC_SERVICE_ACCOUNT_ID:-}" || { echo "YC_SERVICE_ACCOUNT_ID is required (vars.YC_SERVICE_ACCOUNT_ID or secret YC_SERVICE_ACCOUNT_ID)" >&2; exit 1; }
+
+      - name: Install YC CLI
+        run: |
+          set -euo pipefail
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
+          echo "YC_CLI_INITIALIZATION_SILENCE=true" >> "$GITHUB_ENV"
+          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
 
       - name: Resolve dry-run mode
         run: |
