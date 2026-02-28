@@ -91,3 +91,46 @@
 - [ ] Есть доступ на update/create Function и API Gateway.
 - [ ] Проверен Telegram бот (`getMe`) и корректность `TELEGRAM_CHAT_ID`.
 - [ ] Подготовлен набор runtime env vars.
+
+---
+
+## 7) Troubleshooting Codex runtime (если переменные/доступ "как будто есть", но не видны)
+
+### Почему `YC_TOKEN` может не появляться в `printenv`
+
+Частые причины в Codex:
+
+1. Секрет добавлен **после** запуска текущего контейнера, а контейнер использует кэш состояния.
+2. Секрет добавлен в карточке окружения, но не применён к уже запущенной сессии (нужен restart/recreate environment).
+3. Ожидалось, что секрет будет доступен как env, но фактически он подключается только для новых задач после пересоздания.
+4. **Новый чат сам по себе может не помочь**: если используется тот же Codex Environment с включённым кэшем контейнера, вы получаете тот же runtime без новых secret/env.
+
+### Почему бывает "нет доступа" к YC API
+
+В этом runtime запросы идут через `HTTP(S)_PROXY` (`proxy:8080`). Если прокси временно недоступен или режет конкретный хост, `curl` может вернуть `CONNECT tunnel failed`.
+
+### Как поправить (чеклист)
+
+1. В UI окружения проверить, что заданы:
+   - Secret: `YC_TOKEN`;
+   - Env var: `YC_FOLDER_ID=b1g42qj26s1u7gv7bufm`.
+2. Нажать `Сбросить кэш` и перезапустить/пересоздать environment.
+3. Если не помогло — создать **новый отдельный Environment** (другой slug/имя), заново добавить secret/env и запустить задачу уже в нём.
+4. Запустить новую задачу и проверить:
+   ```bash
+   printenv | rg '^YC_'
+   ```
+5. Проверить сеть через прокси (не отключая системные `HTTP_PROXY/HTTPS_PROXY`):
+   ```bash
+   curl -sS -o /dev/null -w 'HTTP:%{http_code} IP:%{remote_ip} ERR:%{errormsg}\n' https://iam.api.cloud.yandex.net/
+   curl -sS -o /dev/null -w 'HTTP:%{http_code} IP:%{remote_ip} ERR:%{errormsg}\n' https://api.cloud.yandex.net/
+   ```
+6. После этого запускать autodiscovery YC ресурсов.
+
+### Минимальный autodiscovery после фикса
+
+```bash
+curl -sS -H "Authorization: Bearer $YC_TOKEN" \
+  "https://resource-manager.api.cloud.yandex.net/resource-manager/v1/clouds?folderId=${YC_FOLDER_ID}"
+```
+
