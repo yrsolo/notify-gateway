@@ -14,90 +14,27 @@ on:
           - "true"
           - "false"
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    environment: production
+    timeout-minutes: 25
 
     env:
-      YC_FOLDER_ID: ${{ vars.YC_FOLDER_ID }}
-      YC_FUNCTION_NAME: ${{ vars.YC_FUNCTION_NAME }}
-      YC_CLOUD_FUNCTION_NAME: ${{ vars.YC_CLOUD_FUNCTION_NAME }}
-      YC_API_GW_NAME: ${{ vars.YC_API_GW_NAME }}
-      YC_SERVICE_ACCOUNT_ID: ${{ vars.YC_SERVICE_ACCOUNT_ID }}
+      YC_FOLDER_ID: ${{ vars.YC_FOLDER_ID || secrets.YC_FOLDER_ID }}
+      YC_FUNCTION_NAME: ${{ vars.YC_FUNCTION_NAME || vars.YC_CLOUD_FUNCTION_NAME || secrets.YC_FUNCTION_NAME || secrets.YC_CLOUD_FUNCTION_NAME || 'notify-gateway' }}
+      YC_API_GW_NAME: ${{ vars.YC_API_GW_NAME || secrets.YC_API_GW_NAME || 'notify-gateway-gw' }}
+      YC_SERVICE_ACCOUNT_ID: ${{ vars.YC_SERVICE_ACCOUNT_ID || secrets.YC_SERVICE_ACCOUNT_ID }}
+      YC_FUNCTION_ENTRYPOINT: ${{ vars.YC_FUNCTION_ENTRYPOINT || secrets.YC_FUNCTION_ENTRYPOINT || 'handler.handler' }}
       FUNCTION_SOURCE_DIR: src
       FUNCTION_RUNTIME: python311
-      FUNCTION_ENTRYPOINT: handler.handler
-      YC_FUNCTION_ID: ${{ vars.YC_FUNCTION_ID }}
-      NOTIFY_ENDPOINT: ${{ vars.NOTIFY_ENDPOINT }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y jq zip
-
-      - name: Install YC CLI
-        run: |
-          set -euo pipefail
-          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
-          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
-
-      - name: Normalize function name alias
-        run: |
-          set -euo pipefail
-          if [[ -z "${YC_FUNCTION_NAME:-}" && -n "${YC_CLOUD_FUNCTION_NAME:-}" ]]; then
-            echo "YC_FUNCTION_NAME=${YC_CLOUD_FUNCTION_NAME}" >> "$GITHUB_ENV"
-          fi
-
-      - name: Validate required config
-        run: |
-          set -euo pipefail
-          test -n "${YC_FOLDER_ID}" || { echo "YC_FOLDER_ID is required" >&2; exit 1; }
-          test -n "${YC_FUNCTION_NAME:-}" || {
-            echo "YC_FUNCTION_NAME is required (or set YC_CLOUD_FUNCTION_NAME as alias)" >&2
-            exit 1
-          }
-          test -n "${YC_API_GW_NAME}" || { echo "YC_API_GW_NAME is required" >&2; exit 1; }
-          test -n "${YC_SERVICE_ACCOUNT_ID}" || { echo "YC_SERVICE_ACCOUNT_ID is required" >&2; exit 1; }
-          test -n "${YC_FUNCTION_ID}" || { echo "YC_FUNCTION_ID is required" >&2; exit 1; }
-          test -n "${NOTIFY_ENDPOINT}" || { echo "NOTIFY_ENDPOINT is required" >&2; exit 1; }
-
-      - name: Prepare IAM token
-        env:
-          YC_TOKEN: ${{ secrets.YC_TOKEN }}
-          YC_IAM_TOKEN: ${{ secrets.YC_IAM_TOKEN }}
-        run: |
-          set -euo pipefail
-          set +x
-          if [[ -n "${YC_IAM_TOKEN:-}" ]]; then
-            echo "::add-mask::${YC_IAM_TOKEN}"
-            echo "YC_IAM_TOKEN=${YC_IAM_TOKEN}" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          if [[ -z "${YC_TOKEN:-}" ]]; then
-            echo "Either YC_IAM_TOKEN or YC_TOKEN secret must be configured" >&2
-            exit 1
-          fi
-
-          IAM_JSON=$(curl -sS -X POST "https://iam.api.cloud.yandex.net/iam/v1/tokens" \
-            -H "Content-Type: application/json" \
-            -d "{\"yandexPassportOauthToken\":\"${YC_TOKEN}\"}")
-
-          IAM_TOKEN=$(jq -r '.iamToken // empty' <<<"$IAM_JSON")
-          if [[ -z "$IAM_TOKEN" ]]; then
-            echo "Failed to exchange YC_TOKEN to IAM token" >&2
-            exit 1
-          fi
-
-          echo "::add-mask::${IAM_TOKEN}"
-          echo "YC_IAM_TOKEN=${IAM_TOKEN}" >> "$GITHUB_ENV"
 
       - name: Resolve dry-run mode
         run: |
@@ -108,38 +45,91 @@ jobs:
             echo "DRY_RUN=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Collect YC context
+      - name: Validate required config
         env:
-          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
+          YC_SA_JSON_CREDENTIALS: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
         run: |
           set -euo pipefail
+          test -n "${YC_SA_JSON_CREDENTIALS:-}" || { echo "YC_SA_JSON_CREDENTIALS secret is required" >&2; exit 1; }
+          test -n "${YC_FOLDER_ID:-}" || { echo "YC_FOLDER_ID is required (vars or secrets)" >&2; exit 1; }
+          test -n "${YC_FUNCTION_NAME:-}" || { echo "YC_FUNCTION_NAME (or YC_CLOUD_FUNCTION_NAME) is required" >&2; exit 1; }
+          test -n "${YC_SERVICE_ACCOUNT_ID:-}" || { echo "YC_SERVICE_ACCOUNT_ID is required (vars or secrets)" >&2; exit 1; }
+          test -n "${YC_FUNCTION_ENTRYPOINT:-}" || { echo "YC_FUNCTION_ENTRYPOINT is required" >&2; exit 1; }
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq zip
+
+      - name: Deploy function version
+        if: env.DRY_RUN != 'true'
+        uses: yc-actions/yc-sls-function@v4
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          folder-id: ${{ env.YC_FOLDER_ID }}
+          function-name: ${{ env.YC_FUNCTION_NAME }}
+          runtime: ${{ env.FUNCTION_RUNTIME }}
+          entrypoint: ${{ env.YC_FUNCTION_ENTRYPOINT }}
+          service-account: ${{ env.YC_SERVICE_ACCOUNT_ID }}
+          include: |
+            src/**
+          exclude: |
+            .git/**
+            .github/**
+            build/**
+            docs/**
+
+      - name: Install YC CLI
+        run: |
+          set -euo pipefail
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
+          echo "YC_CLI_INITIALIZATION_SILENCE=true" >> "$GITHUB_ENV"
+          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
+
+      - name: Configure YC CLI auth via service account key
+        env:
+          YC_SA_JSON_CREDENTIALS: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          KEY_FILE="$RUNNER_TEMP/yc-sa-key.json"
+          printf '%s' "${YC_SA_JSON_CREDENTIALS}" > "$KEY_FILE"
+
+          yc config profile create ci >/dev/null 2>&1 || true
+          yc config profile activate ci
+          yc config set service-account-key "$KEY_FILE"
+          yc config set folder-id "${YC_FOLDER_ID}"
+
+      - name: Resolve function id
+        run: |
+          set -euo pipefail
+          FUNCTION_ID=$(yc serverless function list --folder-id "${YC_FOLDER_ID}" --format json \
+            | jq -r --arg name "${YC_FUNCTION_NAME}" '.[] | select(.name == $name) | .id' \
+            | head -n1)
+
+          test -n "${FUNCTION_ID}" || { echo "Unable to resolve YC_FUNCTION_ID for ${YC_FUNCTION_NAME}" >&2; exit 1; }
+          echo "YC_FUNCTION_ID=${FUNCTION_ID}" >> "$GITHUB_ENV"
+
+      - name: Apply API Gateway spec and resolve endpoint
+        run: |
+          set -euo pipefail
+
           if [[ "${DRY_RUN}" == "true" ]]; then
-            infra/scripts/yc_collect_context.sh --dry-run
+            BOOTSTRAP_OUTPUT=$(infra/scripts/yc_bootstrap_notify_endpoint.sh --dry-run)
           else
-            infra/scripts/yc_collect_context.sh
+            BOOTSTRAP_OUTPUT=$(infra/scripts/yc_bootstrap_notify_endpoint.sh)
           fi
 
-      - name: Deploy Function
-        env:
-          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            infra/scripts/yc_deploy_function.sh --dry-run
-          else
-            infra/scripts/yc_deploy_function.sh
-          fi
+          echo "${BOOTSTRAP_OUTPUT}"
 
-      - name: Apply API Gateway spec
-        env:
-          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            infra/scripts/yc_apply_apigw.sh --dry-run
-          else
-            infra/scripts/yc_apply_apigw.sh
-          fi
+          GATEWAY_NAME=$(printf '%s\n' "${BOOTSTRAP_OUTPUT}" | awk -F= '/^YC_API_GW_NAME=/{print $2}' | tail -n1)
+          ENDPOINT=$(printf '%s\n' "${BOOTSTRAP_OUTPUT}" | awk -F= '/^NOTIFY_ENDPOINT=/{print $2}' | tail -n1)
+
+          test -n "${GATEWAY_NAME}" || { echo "Failed to resolve YC_API_GW_NAME from bootstrap output" >&2; exit 1; }
+          test -n "${ENDPOINT}" || { echo "Failed to resolve NOTIFY_ENDPOINT from bootstrap output" >&2; exit 1; }
+
+          echo "YC_API_GW_NAME=${GATEWAY_NAME}" >> "$GITHUB_ENV"
+          echo "NOTIFY_ENDPOINT=${ENDPOINT}" >> "$GITHUB_ENV"
 
       - name: Smoke-check /notify
         env:
@@ -150,6 +140,8 @@ jobs:
             echo "NOTIFY_API_KEY secret is required" >&2
             exit 1
           fi
+
+          test -n "${NOTIFY_ENDPOINT:-}" || { echo "NOTIFY_ENDPOINT could not be resolved" >&2; exit 1; }
 
           if [[ "${DRY_RUN}" == "true" ]]; then
             infra/scripts/smoke_notify.sh --dry-run
