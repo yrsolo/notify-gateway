@@ -538,3 +538,29 @@ Stage 4 — Production readiness.
 
 ### Next
 - Применить DNS-запись `api.<domain>` и задать `NOTIFY_PUBLIC_BASE_URL` в GitHub Environment `production`.
+
+---
+
+## 2026-02-28 — Documentation sync audit
+
+### Stage
+Stage 4 — Production readiness (maintenance mode).
+
+### Done
+- Проведена сверка фактической реализации (workflow + infra scripts) и документации.
+- Исправлены рассинхроны:
+  - `docs/execution/CURRENT_STAGE_TASKS.md` очищен от конфликтующих секций Stage 3/4, статус приведён к maintenance mode;
+  - `docs/DEPLOY_RUNBOOK.md` переписан без дублей и синхронизирован с актуальным `.github/workflows/deploy.yml`;
+  - `docs/STATUS.md` обновлён под текущее состояние (Stage 0..4 завершены);
+  - `docs/PLAN.md` обновлён в формате «план + факт выполнения».
+
+### Blockers
+- `git fetch origin && git rebase origin/main` недоступны в текущем контейнере, так как remote `origin` не настроен.
+- Владелец: владелец проекта/CI окружения.
+- Действия для снятия:
+  1. Добавить корректный remote `origin` в локальный clone.
+  2. Проверить доступ к `origin/main` (`git fetch origin`).
+- Критерий снятия: команда `git fetch origin` выполняется без ошибки.
+
+### Next
+- Поддерживать синхронизацию docs при каждом изменении deploy workflow/infra scripts.
