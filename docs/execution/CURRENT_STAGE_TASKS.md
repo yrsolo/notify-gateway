@@ -1,37 +1,64 @@
 # Current stage tasks
 
-Текущая стадия: **Stage 1 — Repo hardening (foundation)**.
+Текущая стадия: **Stage 3 — Runtime validation & observability**.
 
-> Формат задачи: ID / описание / критерий приёмки / артефакт / статус.
+> Формат: ID / описание / owner / оценка / критерии приёмки / артефакт проверки / статус.
 
-## Backlog Stage 1
+## Stage 2 completion snapshot
 
-- [ ] **S1-T01** Создать каркас инфраструктурных каталогов.
-  - Приёмка: в репозитории присутствуют `infra/env`, `infra/function/env`, `infra/scripts`, `.github/workflows`.
-  - Артефакт: структура директорий в git.
+- [x] S2-T01 `yc_collect_context.sh`
+- [x] S2-T02 `yc_deploy_function.sh`
+- [x] S2-T03 `.github/workflows/deploy.yml`
+- [x] S2-T04 API Gateway apply/validate step (`yc_apply_apigw.sh` + workflow)
+- [x] S2-T05 Deploy runbook + rollback docs
 
-- [ ] **S1-T02** Добавить шаблоны env-конфигов.
-  - Приёмка: есть `infra/env/dev.env.example`, `infra/env/prod.env.example`, `infra/function/env/common.env.example`, `infra/function/env/prod.env.example`.
-  - Артефакт: коммит с файлами-шаблонами без секретов.
+Stage 2 DoD: **выполнен**.
 
-- [ ] **S1-T03** Добавить CI workflow для pull request.
-  - Приёмка: `.github/workflows/ci.yml` запускает lint + `pytest -q`.
-  - Артефакт: зелёный прогон CI на PR.
+## Stage 3 backlog (атомарные задачи)
 
-- [ ] **S1-T04** Зафиксировать security guardrails для CI.
-  - Приёмка: документировано, что секреты не пишутся в лог; запрещён `set -x` в секретных шагах.
-  - Артефакт: обновление документации + (опц.) проверочный скрипт.
+- [ ] **S3-T01** Добавить smoke-check скрипт для `POST /notify`.
+  - Owner: agent
+  - Оценка: 0.5d
+  - Критерии приёмки:
+    1. Есть скрипт `infra/scripts/smoke_notify.sh` с `set -euo pipefail`.
+    2. Скрипт валидирует HTTP-код и формат JSON ответа.
+    3. Поддержан безопасный dry-run/skip-send режим.
+  - Артефакт проверки: `bash -n infra/scripts/smoke_notify.sh` + dry-run вывод.
+  - Статус: `todo`
 
-- [ ] **S1-T05** Обновить runbook локального запуска.
-  - Приёмка: README/docs описывает, как локально запускать тесты и что требуется из env.
-  - Артефакт: обновлённый раздел в `README.md`/`docs`.
+- [ ] **S3-T02** Встроить smoke-check в deploy pipeline.
+  - Owner: agent
+  - Оценка: 0.5d
+  - Критерии приёмки:
+    1. После деплоя запускается smoke-check.
+    2. Падение smoke-check фейлит workflow.
+  - Артефакт проверки: `.github/workflows/deploy.yml`.
+  - Статус: `todo`
+
+- [ ] **S3-T03** Документировать rollback-runbook с операционными шагами.
+  - Owner: agent
+  - Оценка: 0.5d
+  - Критерии приёмки:
+    1. Описан rollback функции и gateway.
+    2. Описаны проверки после rollback.
+  - Артефакт проверки: `docs/DEPLOY_RUNBOOK.md`.
+  - Статус: `todo`
+
+- [ ] **S3-T04** Зафиксировать SLO-lite и operational checks.
+  - Owner: agent
+  - Оценка: 0.5d
+  - Критерии приёмки:
+    1. Описаны критерии успешности (например, доля 2xx smoke-check).
+    2. Описаны источники логов и триггеры эскалации.
+  - Артефакт проверки: новый документ в `docs/`.
+  - Статус: `todo`
 
 ## WIP limit
 - Одновременно в `in_progress` не более 2 задач.
+- Текущее состояние: 0 `in_progress`.
 
-## Definition of Done for Stage 1
-- [ ] S1-T01 завершена
-- [ ] S1-T02 завершена
-- [ ] S1-T03 завершена
-- [ ] S1-T04 завершена
-- [ ] S1-T05 завершена
+## Definition of Done for Stage 3
+- [ ] S3-T01 завершена
+- [ ] S3-T02 завершена
+- [ ] S3-T03 завершена
+- [ ] S3-T04 завершена
