@@ -29,8 +29,6 @@ jobs:
       FUNCTION_SOURCE_DIR: src
       FUNCTION_RUNTIME: python311
       FUNCTION_ENTRYPOINT: handler.handler
-      YC_FUNCTION_ID: ${{ vars.YC_FUNCTION_ID }}
-      NOTIFY_ENDPOINT: ${{ vars.NOTIFY_ENDPOINT }}
 
     steps:
       - name: Checkout
@@ -63,10 +61,7 @@ jobs:
             echo "YC_FUNCTION_NAME is required (or set YC_CLOUD_FUNCTION_NAME as alias)" >&2
             exit 1
           }
-          test -n "${YC_API_GW_NAME}" || { echo "YC_API_GW_NAME is required" >&2; exit 1; }
           test -n "${YC_SERVICE_ACCOUNT_ID}" || { echo "YC_SERVICE_ACCOUNT_ID is required" >&2; exit 1; }
-          test -n "${YC_FUNCTION_ID}" || { echo "YC_FUNCTION_ID is required" >&2; exit 1; }
-          test -n "${NOTIFY_ENDPOINT}" || { echo "NOTIFY_ENDPOINT is required" >&2; exit 1; }
 
       - name: Prepare IAM token
         env:
@@ -130,16 +125,39 @@ jobs:
             infra/scripts/yc_deploy_function.sh
           fi
 
-      - name: Apply API Gateway spec
+      - name: Resolve function id
+        run: |
+          set -euo pipefail
+          FUNCTION_ID=$(yc serverless function list --folder-id "${YC_FOLDER_ID}" --format json \
+            | jq -r --arg name "${YC_FUNCTION_NAME}" '.[] | select(.name == $name) | .id' \
+            | head -n1)
+
+          test -n "${FUNCTION_ID}" || { echo "Unable to resolve YC_FUNCTION_ID for ${YC_FUNCTION_NAME}" >&2; exit 1; }
+          echo "YC_FUNCTION_ID=${FUNCTION_ID}" >> "$GITHUB_ENV"
+
+      - name: Apply API Gateway spec and resolve endpoint
         env:
           YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
         run: |
           set -euo pipefail
+          export YC_API_GW_NAME="${YC_API_GW_NAME:-notify-gateway-gw}"
+
           if [[ "${DRY_RUN}" == "true" ]]; then
-            infra/scripts/yc_apply_apigw.sh --dry-run
+            BOOTSTRAP_OUTPUT=$(infra/scripts/yc_bootstrap_notify_endpoint.sh --dry-run)
           else
-            infra/scripts/yc_apply_apigw.sh
+            BOOTSTRAP_OUTPUT=$(infra/scripts/yc_bootstrap_notify_endpoint.sh)
           fi
+
+          echo "${BOOTSTRAP_OUTPUT}"
+
+          GATEWAY_NAME=$(printf '%s\n' "${BOOTSTRAP_OUTPUT}" | awk -F= '/^YC_API_GW_NAME=/{print $2}' | tail -n1)
+          ENDPOINT=$(printf '%s\n' "${BOOTSTRAP_OUTPUT}" | awk -F= '/^NOTIFY_ENDPOINT=/{print $2}' | tail -n1)
+
+          test -n "${GATEWAY_NAME}" || { echo "Failed to resolve YC_API_GW_NAME from bootstrap output" >&2; exit 1; }
+          test -n "${ENDPOINT}" || { echo "Failed to resolve NOTIFY_ENDPOINT from bootstrap output" >&2; exit 1; }
+
+          echo "YC_API_GW_NAME=${GATEWAY_NAME}" >> "$GITHUB_ENV"
+          echo "NOTIFY_ENDPOINT=${ENDPOINT}" >> "$GITHUB_ENV"
 
       - name: Smoke-check /notify
         env:
@@ -150,6 +168,8 @@ jobs:
             echo "NOTIFY_API_KEY secret is required" >&2
             exit 1
           fi
+
+          test -n "${NOTIFY_ENDPOINT:-}" || { echo "NOTIFY_ENDPOINT could not be resolved" >&2; exit 1; }
 
           if [[ "${DRY_RUN}" == "true" ]]; then
             infra/scripts/smoke_notify.sh --dry-run
