@@ -42,6 +42,25 @@
   - Артефакт проверки: `.github/workflows/deploy.yml`.
   - Статус: `done`
 
+
+- [x] **S4-T06** Убрать hard-dependency от `rg` в bootstrap API Gateway.
+  - Owner: agent
+  - Оценка: 0.25d
+  - Критерии приёмки:
+    1. Скрипт bootstrap не требует установленный `rg` на GitHub runner.
+    2. Проверка плейсхолдеров выполняется стандартным POSIX/Ubuntu инструментом.
+  - Артефакт проверки: `infra/scripts/yc_bootstrap_notify_endpoint.sh`.
+  - Статус: `done`
+
+- [x] **S4-T07** Зафиксировать правило синхронизации ветки с `origin/main` перед правками.
+  - Owner: agent
+  - Оценка: 0.25d
+  - Критерии приёмки:
+    1. В `AGENT.md` добавлено обязательное правило `git fetch origin` + `rebase origin/main` (или merge fallback).
+    2. Правило явно требует выполнять синхронизацию до начала изменений.
+  - Артефакт проверки: `AGENT.md`.
+  - Статус: `done`
+
 Текущая стадия: **Stage 3 — Runtime validation & observability**.
 
 > Формат: ID / описание / owner / оценка / критерии приёмки / артефакт проверки / статус.
@@ -104,6 +123,8 @@ Stage 2 DoD: **выполнен**.
 - [x] S4-T02 завершена
 - [x] S4-T03 завершена
 - [x] S4-T04 завершена
+- [x] S4-T06 завершена
+- [x] S4-T07 завершена
 
 ## Program status
 - Все стадии `Stage 0..4` закрыты по execution-трекеру.

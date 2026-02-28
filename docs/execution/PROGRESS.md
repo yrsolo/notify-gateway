@@ -503,3 +503,41 @@ Stage 4 — Production readiness (maintenance mode).
 
 ### Next
 - Проверить deploy workflow в GitHub Actions после обновления env/Lockbox.
+
+---
+
+## 2026-02-28 — S4-T06 (maintenance): deploy fix for missing rg on runner
+
+### Stage
+Stage 4 — Production readiness (maintenance mode).
+
+### Done
+- Исправлен `infra/scripts/yc_bootstrap_notify_endpoint.sh`, чтобы деплой не требовал `rg` на runner:
+  - проверка неразрешённых плейсхолдеров переведена с `rg -q` на `grep -q`;
+  - удалена обязательная проверка `require_cmd rg`.
+- Это устраняет падение шага `Apply API Gateway spec and resolve endpoint` с ошибкой `required command 'rg' is not installed`.
+
+### Blockers
+- Нет.
+
+### Next
+- Перезапустить GitHub Actions deploy и убедиться, что bootstrap + smoke-check проходят на `ubuntu-latest`.
+
+---
+
+## 2026-03-01 — S4-T07 (maintenance): branch sync rule before edits
+
+### Stage
+Stage 4 — Production readiness (maintenance mode).
+
+### Done
+- В `AGENT.md` добавлено обязательное правило синхронизации рабочей ветки перед любыми правками:
+  - `git fetch origin`;
+  - затем `git rebase origin/main` (предпочтительно) или `git merge origin/main` как fallback.
+- Зафиксировано требование: начинать редактирование файлов только после синхронизации с актуальным `origin/main`, чтобы снизить риск конфликтов после merge в `main`.
+
+### Blockers
+- Нет.
+
+### Next
+- Применять правило синхронизации ветки как обязательный pre-flight шаг перед любыми будущими изменениями.
