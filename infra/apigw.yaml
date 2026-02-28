@@ -1,0 +1,15 @@
+openapi: 3.0.0
+info:
+  title: notify-gateway
+  version: 1.0.0
+paths:
+  /notify:
+    post:
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: <YOUR_FUNCTION_ID>
+        tag: $latest
+        service_account_id: <YOUR_SERVICE_ACCOUNT_ID>
+      responses:
+        '200':
+          description: Notification accepted
