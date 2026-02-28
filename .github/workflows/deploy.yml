@@ -37,12 +37,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Resolve dry-run mode
+        env:
+          NOTIFY_API_KEYS: ${{ secrets.NOTIFY_API_KEYS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "DRY_RUN=${{ inputs.dry_run }}" >> "$GITHUB_ENV"
           else
-            echo "DRY_RUN=false" >> "$GITHUB_ENV"
+            if [[ -z "${NOTIFY_API_KEYS:-}" || -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
+              echo "DRY_RUN=true" >> "$GITHUB_ENV"
+              echo "Deploy secrets are incomplete; forcing dry-run mode for this push."
+            else
+              echo "DRY_RUN=false" >> "$GITHUB_ENV"
+            fi
           fi
 
       - name: Validate required config
@@ -148,7 +157,7 @@ jobs:
           NOTIFY_API_KEY: ${{ secrets.NOTIFY_API_KEY }}
         run: |
           set -euo pipefail
-          if [[ -z "${NOTIFY_API_KEY:-}" ]]; then
+          if [[ "${DRY_RUN}" != "true" && -z "${NOTIFY_API_KEY:-}" ]]; then
             echo "NOTIFY_API_KEY secret is required" >&2
             exit 1
           fi
