@@ -1,175 +1,171 @@
-# notify-gateway — этап 0: планирование MVP
+# notify-gateway — план старта цикла разработки
 
-> Цель этого этапа: ничего не реализуем в коде, только фиксируем план, границы MVP, доступы и порядок работ.
+> Цель: перейти от «доступ есть» к контролируемой реализации и деплою в Yandex Cloud с автоматическим сбором env/secrets из Lockbox.
 
-## 1) Цель и границы MVP
+## 1) Что именно нужно для проекта (data contract инфраструктуры)
 
-### Что делаем в MVP
-- Единая точка входа `POST /notify`.
-- Авторизация через `Authorization: Bearer <API_KEY>`.
-- Валидация входного JSON (обязательные/опциональные поля, типы).
-- Отправка сообщения в Telegram Bot API (`sendMessage`).
-- Развёртывание в Yandex Cloud Functions + API Gateway.
-- Все секреты только в переменных окружения.
+Ниже — обязательный минимальный набор данных для MVP и их источник.
 
-### Что НЕ делаем в MVP
-- Очереди, ретраи на уровне инфраструктуры, DLQ.
-- Дедупликация/антиспам в БД.
-- Сложная маршрутизация по нескольким чатам/тредам.
-- RBAC-панель, UI, хранение истории уведомлений.
+### 1.1 Инфраструктурный контекст
+- `YC_CLOUD_ID` — ID облака.
+- `YC_FOLDER_ID` — ID рабочей папки.
+- `YC_SERVICE_ACCOUNT_ID` — SA для CI/CD-деплоя.
+- `YC_FUNCTION_NAME` / `YC_FUNCTION_ID` — целевая Cloud Function.
+- `YC_API_GW_NAME` / `YC_API_GW_ID` — целевой API Gateway.
 
----
+### 1.2 Runtime-конфигурация функции
+- `NOTIFY_MAX_MESSAGE_LEN` (опционально).
+- `NOTIFY_MAX_EXTRA_LEN` (опционально).
+- `LOG_LEVEL` (опционально).
 
-## 2) Архитектура MVP (минимальная)
-
-1. Клиентский проект делает `POST /notify` в API Gateway.
-2. API Gateway проксирует запрос в Cloud Function.
-3. Функция:
-   - проверяет Bearer API key;
-   - валидирует payload;
-   - формирует Telegram message в HTML;
-   - вызывает `https://api.telegram.org/bot<TOKEN>/sendMessage`.
-4. Функция возвращает JSON-ответ клиенту (`200/400/401/5xx`).
+### 1.3 Runtime-секреты
+- `NOTIFY_API_KEYS`.
+- `TELEGRAM_BOT_TOKEN`.
+- `TELEGRAM_CHAT_ID`.
 
 ---
 
-## 3) План работ по этапам
+## 2) Где берём данные: YC API vs Lockbox
 
-## Этап A — Подготовка окружений и доступов (текущий)
-- [x] Зафиксировать список env/secret переменных для runtime и deploy.
-- [x] Зафиксировать список доступов в Yandex Cloud (Cloud/Folder/SA/roles).
-- [ ] Зафиксировать минимальный runbook деплоя.
-- [x] Подготовить чеклист готовности перед реализацией.
+## 2.1 Получаем из YC API (автодискавери)
+- Cloud/Folder: Resource Manager API.
+- Service Accounts: IAM API.
+- Functions: Serverless Functions API.
+- API Gateways: API Gateway API.
+- Сервисные привязки/роли (проверка): IAM policy/list access bindings.
 
-**Текущий блокер:** runtime сессия Codex не видит `YC_TOKEN`/`YC_FOLDER_ID`, а выход к YC API в текущей сессии отвечает `403 CONNECT tunnel`; до исправления окружения реализацию не начинаем.
+## 2.2 Получаем из Lockbox
+- Все runtime-секреты функции: `NOTIFY_API_KEYS`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+- Опционально — deploy secrets, если не используем OIDC/short-lived IAM в CI.
 
-## Этап B — Реализация backend MVP
-- [ ] Реализовать `src/handler.py` под Python 3.11.
-- [ ] Добавить схему валидации и понятные ошибки 400/401.
-- [ ] Добавить форматирование Telegram-сообщения с HTML-escape.
-- [ ] Добавить unit-тесты (`401`, `400`, `200`, edge-cases).
-
-## Этап C — Infra и публикация
-- [ ] Подготовить `infra/apigw.yaml` для `POST /notify`.
-- [ ] Описать команды деплоя и обновления функции.
-- [ ] Проверить end-to-end через `curl`.
-
-## Этап D — Post-MVP (по желанию)
-- [ ] Подпись HMAC вместо/вместе с API key.
-- [ ] Idempotency и anti-spam (TTL storage).
-- [ ] Маршрутизация по проектам в разные chat/thread.
+## 2.3 Решение по источнику правды
+- **Source of truth для секретов:** Lockbox.
+- **Source of truth для инфраструктурных ID:** repo-level config (`infra/env/*.env`) + сверка через YC API.
+- **Source of truth для runtime non-secret config:** repo (`infra/function/env/*.env`).
 
 ---
 
-## 4) Критерии готовности MVP
+## 3) Проверка полноты доступа (готовность к реализации)
 
-- [ ] `POST /notify` работает через API Gateway.
-- [ ] При неверном ключе всегда `401`.
-- [ ] При невалидном JSON/типах всегда `400` с понятной ошибкой.
-- [ ] При успехе `200` и `telegram_message_id`.
-- [ ] В репозитории нет секретов.
+## 3.1 Чеклист доступов
+- [ ] CI service account имеет роли: `serverless.functions.editor`, `api-gateway.editor`, `iam.serviceAccounts.user`.
+- [ ] API Gateway integration SA имеет `serverless.functions.invoker` на функцию.
+- [ ] Есть доступ к Lockbox: чтение payload секрета(ов) для деплоя.
 
----
-
-## 5) Риски и меры
-
-- Риск: неверный `chat_id` или бот не имеет доступа к чату.
-  - Мера: smoke-check `getMe`/тестовый `sendMessage` перед запуском.
-- Риск: слишком длинные сообщения (`message`, `extra`) и ошибки Telegram.
-  - Мера: на этапе реализации добавить лимиты/усечение.
-- Риск: ручная ротация API ключей.
-  - Мера: хранить ключи только в env/secret manager, ротация по регламенту.
+## 3.2 Чеклист извлечения данных
+- [ ] Автодискавери cloud/folder выполняется.
+- [ ] Видим целевую функцию и API Gateway (или можем создать).
+- [ ] Читаем Lockbox secret payload с нужными ключами.
+- [ ] Нет ручного ввода секретов в workflow.
 
 ---
 
-## 6) Definition of Ready для старта реализации
+## 4) Подготовка структуры репозитория
 
-Реализацию начинаем только когда:
-- [ ] Есть `cloud_id`, `folder_id`.
-- [ ] Есть service account(ы) и выданы роли.
-- [ ] Есть Telegram bot token и валидный chat_id.
-- [ ] Подготовлены runtime/deploy env-переменные (см. `docs/ENV_AND_ACCESS.md`).
-- [ ] Согласован API-контракт (поля, ошибки, формат ответа).
+Предлагаемая целевая структура:
 
----
-
-## 7) Операционный статус preflight (2026-02-28, обновлено)
-
-Проверка повторно выполнена в runtime Codex-сессии.
-
-- `YC_TOKEN`: **не виден** в runtime env (`printenv` пуст по `^YC_`).
-- `YC_FOLDER_ID`: **не виден** в runtime env (`printenv` пуст по `^YC_`).
-- Сетевой контур:
-  - в окружении выставлены `HTTP_PROXY/HTTPS_PROXY=http://proxy:8080`;
-  - через прокси `iam.api.cloud.yandex.net` и `api.cloud.yandex.net` отвечают `HTTP 404` на `/` (endpoint достижим);
-  - без прокси (`--noproxy '*'`) соединение на `:443` не устанавливается.
-
-### Что это значит
-
-1. Проблема не в коде репозитория: env переменные не проброшены в текущий runtime контейнер.
-2. Сеть наружу в этой среде работает через прокси; прямой egress отключён.
-3. До появления `YC_TOKEN` в env невозможен авторизованный autodiscovery YC API.
-
-### Можно ли "поправить" изнутри задачи
-
-Частично:
-- ✅ Я могу валидировать состояние, подготовить команды, и сразу продолжить autodiscovery как только env появится.
-- ❌ Я не могу изнутри контейнера создать/подключить secret в UI Codex за владельца окружения.
-
-### Следующее действие (owner-side), затем сразу команда в задаче
-
-1. В настройках окружения:
-   - добавить/проверить secret `YC_TOKEN`;
-   - добавить env `YC_FOLDER_ID=b1g42qj26s1u7gv7bufm`.
-2. Нажать `Сбросить кэш` и пересоздать environment (новая задача/новый контейнер).
-3. Если новый чат открыт, но контейнер всё равно старый — создать новый Codex Environment (другое имя/slug), потому что чат может переиспользовать кэш текущего environment.
-4. В новой задаче выполнить:
-
-```bash
-printenv | rg '^YC_'
-curl -sS -H "Authorization: Bearer $YC_TOKEN" \
-  "https://resource-manager.api.cloud.yandex.net/resource-manager/v1/clouds?folderId=${YC_FOLDER_ID}"
+```text
+.
+├── src/
+├── tests/
+├── infra/
+│   ├── apigw.yaml
+│   ├── env/
+│   │   ├── dev.env.example
+│   │   └── prod.env.example
+│   ├── function/
+│   │   └── env/
+│   │       ├── common.env.example
+│   │       └── prod.env.example
+│   └── scripts/
+│       ├── yc_discovery_via_api.sh
+│       ├── yc_collect_context.sh
+│       └── yc_deploy_function.sh
+├── .github/
+│   └── workflows/
+│       ├── ci.yml
+│       └── deploy.yml
+└── docs/
 ```
 
+### Принципы
+- `*.example` храним в git, реальные значения — только в Lockbox/GitHub Secrets.
+- Скрипты в `infra/scripts/` идемпотентные, с `set -euo pipefail`.
+- Любой deploy-скрипт должен поддерживать режим `--dry-run`.
+
 ---
 
-## 8) Что нужно от владельца, чтобы я продолжил всё сам
+## 5) План для тестов (чтобы разработку можно было запускать сразу)
 
-Я могу выполнить autodiscovery полностью в этой задаче, но сейчас блокер только один: в runtime контейнер не проброшен `YC_TOKEN`.
+## 5.1 Локальные тесты
+- Unit: `pytest -q` (валидаторы, авторизация, формирование payload в Telegram).
+- Contract tests: проверка схемы входного JSON и формата ответов.
 
-Минимальная помощь от владельца окружения (1-2 минуты):
+## 5.2 CI тесты
+- На PR: линтер + unit tests + (опц.) coverage threshold.
+- На `main`: тот же набор + подготовка deploy-артефакта (zip функции).
 
-1. В настройках Codex Environment добавить/проверить:
-   - Secret: `YC_TOKEN`;
-   - Env: `YC_FOLDER_ID=b1g42qj26s1u7gv7bufm`.
-2. Нажать **Сбросить кэш** и запустить новую задачу (новый контейнер).
-3. Если не помогло — создать новый Codex Environment и добавить secret/env уже там.
-4. Прислать одно подтверждение: вывод команды `printenv | rg '^YC_'` (без значения токена).
+## 5.3 Smoke после деплоя
+- `POST /notify` с тестовым ключом в технический чат.
+- Проверка response-кода и факта доставки в Telegram.
 
-После этого я сразу делаю сам:
+---
 
-```bash
-# 1) Проверка токена
-curl -sS -H "Authorization: Bearer $YC_TOKEN" https://iam.api.cloud.yandex.net/iam/v1/tokens
+## 6) План GitHub Actions для деплоя main → Yandex Function
 
-# 2) Cloud/Folder
-curl -sS -H "Authorization: Bearer $YC_TOKEN" \
-  "https://resource-manager.api.cloud.yandex.net/resource-manager/v1/folders/${YC_FOLDER_ID}"
+## 6.1 Триггер
+- `push` в `main`.
+- `workflow_dispatch` для ручного запуска.
 
-# 3) Service Accounts
-curl -sS -H "Authorization: Bearer $YC_TOKEN" \
-  "https://iam.api.cloud.yandex.net/iam/v1/serviceAccounts?folderId=${YC_FOLDER_ID}"
+## 6.2 Что workflow делает
+1. Получает короткоживущий IAM token (через OAuth secret или OIDC flow).
+2. Через Lockbox API читает секрет(ы) runtime.
+3. Собирает runtime env файл в памяти runner (без записи секретов в лог).
+4. Упаковывает функцию в zip.
+5. Обновляет/создаёт Cloud Function.
+6. Обновляет API Gateway (если требуется, через `infra/apigw.yaml`).
+7. Выполняет smoke-check endpoint.
 
-# 4) Functions
-curl -sS -H "Authorization: Bearer $YC_TOKEN" \
-  "https://serverless-functions.api.cloud.yandex.net/functions/v1/functions?folderId=${YC_FOLDER_ID}"
+## 6.3 Минимальные секреты GitHub
+- `YC_TOKEN` **или** безопасный механизм выдачи IAM token.
+- `YC_CLOUD_ID`, `YC_FOLDER_ID`.
+- `YC_SERVICE_ACCOUNT_ID` (если нужно в скриптах).
+- `YC_LOCKBOX_SECRET_ID` (или набор secret IDs).
 
-# 5) API Gateway
-curl -sS -H "Authorization: Bearer $YC_TOKEN" \
-  "https://serverless-apigateway.api.cloud.yandex.net/apigateways/v1/api-gateways?folderId=${YC_FOLDER_ID}"
+## 6.4 Требования безопасности
+- Маскировка секретов (`::add-mask::`).
+- `set -x` запрещён в шагах, где могут всплыть секреты.
+- Принцип least privilege для SA.
 
-# 6) Lockbox
-curl -sS -H "Authorization: Bearer $YC_TOKEN" \
-  "https://payload.lockbox.api.cloud.yandex.net/lockbox/v1/secrets?folderId=${YC_FOLDER_ID}"
-```
+---
 
+## 7) Итерационный roadmap
+
+### Итерация 0 (сейчас): Discovery + планирование
+- [x] Подтвердить доступ к YC API из runtime.
+- [x] Зафиксировать стратегию получения данных и секретов.
+- [x] Сформировать план структуры репозитория и CI/CD.
+
+### Итерация 1: Repo hardening
+- [ ] Ввести целевую структуру `infra/`, `.github/workflows/`, `*.example`.
+- [ ] Добавить `ci.yml` (линт + тесты).
+
+### Итерация 2: Deploy automation
+- [ ] Добавить `infra/scripts/yc_collect_context.sh`.
+- [ ] Добавить `infra/scripts/yc_deploy_function.sh`.
+- [ ] Добавить `deploy.yml` с чтением Lockbox и деплоем в Function.
+
+### Итерация 3: Validation
+- [ ] Smoke-check после деплоя.
+- [ ] Runbook rollback (предыдущая версия функции).
+- [ ] Финализация DoD для production.
+
+---
+
+## 8) Definition of Ready для начала активной разработки
+
+Реализацию фич начинаем, когда:
+- [ ] Заполнены IDs ресурсов (`cloud/folder/function/apigw/SA`).
+- [ ] Проверено чтение всех нужных секретов из Lockbox.
+- [ ] Подготовлен и согласован deploy workflow (черновик `deploy.yml`).
+- [ ] `pytest -q` стабильно проходит в CI.
