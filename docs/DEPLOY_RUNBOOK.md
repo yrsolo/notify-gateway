@@ -30,6 +30,24 @@
 5. Применение API Gateway spec через `infra/scripts/yc_apply_apigw.sh`.
 6. Smoke-check `POST /notify` через `infra/scripts/smoke_notify.sh`.
 
+
+## 2.1) Bootstrap YC_API_GW_NAME и NOTIFY_ENDPOINT
+
+Если gateway еще не создан или забыли значения переменных, можно восстановить автоматически:
+
+```bash
+YC_FOLDER_ID=<folder-id> \
+YC_FUNCTION_ID=<function-id> \
+YC_SERVICE_ACCOUNT_ID=<sa-id> \
+LOCKBOX_SECRET_NAME=NG \
+infra/scripts/yc_bootstrap_notify_endpoint.sh
+```
+
+Скрипт:
+- создаст/обновит API Gateway `notify-gateway-gw` (или `YC_API_GW_NAME`, если передан);
+- выведет готовые значения `YC_API_GW_NAME` и `NOTIFY_ENDPOINT`;
+- при указании `LOCKBOX_SECRET_ID`/`LOCKBOX_SECRET_NAME` создаст новую версию секрета в Lockbox с этими ключами.
+
 ## 3) Локальные проверки перед релизом
 
 ```bash
