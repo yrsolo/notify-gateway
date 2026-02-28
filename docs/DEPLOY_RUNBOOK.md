@@ -16,19 +16,36 @@
 - `NOTIFY_ENDPOINT` (полный URL для `POST /notify`)
 
 ### GitHub Actions Secrets
-- `YC_IAM_TOKEN` (предпочтительно) **или** `YC_TOKEN` (fallback)
+- `YC_SA_JSON_CREDENTIALS` (service account key JSON)
 - `NOTIFY_API_KEY` (ключ для smoke-check запроса)
 
 ## 2) Последовательность deploy workflow
 
-Файл: `.github/workflows/deploy.yml`.
+Файл: `.github/workflows/deploy.yml` (job привязан к GitHub Environment `production`).
 
 1. Валидация обязательных переменных.
-2. Безопасная подготовка IAM token (`set +x`, `::add-mask::`).
-3. Discovery через `infra/scripts/yc_collect_context.sh`.
-4. Деплой функции через `infra/scripts/yc_deploy_function.sh`.
-5. Применение API Gateway spec через `infra/scripts/yc_apply_apigw.sh`.
-6. Smoke-check `POST /notify` через `infra/scripts/smoke_notify.sh`.
+2. Проверка обязательных env и аутентификация через `YC_SA_JSON_CREDENTIALS`.
+3. Деплой функции через `yc-actions/yc-sls-function@v4`.
+4. Применение API Gateway и вычисление `NOTIFY_ENDPOINT` через `infra/scripts/yc_bootstrap_notify_endpoint.sh`.
+5. Smoke-check `POST /notify` через `infra/scripts/smoke_notify.sh`.
+
+
+## 2.1) Bootstrap YC_API_GW_NAME и NOTIFY_ENDPOINT
+
+Если gateway еще не создан или забыли значения переменных, можно восстановить автоматически:
+
+```bash
+YC_FOLDER_ID=<folder-id> \
+YC_FUNCTION_ID=<function-id> \
+YC_SERVICE_ACCOUNT_ID=<sa-id> \
+LOCKBOX_SECRET_NAME=NG \
+infra/scripts/yc_bootstrap_notify_endpoint.sh
+```
+
+Скрипт:
+- создаст/обновит API Gateway `notify-gateway-gw` (или `YC_API_GW_NAME`, если передан);
+- выведет готовые значения `YC_API_GW_NAME` и `NOTIFY_ENDPOINT`;
+- при указании `LOCKBOX_SECRET_ID`/`LOCKBOX_SECRET_NAME` создаст новую версию секрета в Lockbox с этими ключами.
 
 
 ## 2.1) Bootstrap YC_API_GW_NAME и NOTIFY_ENDPOINT
@@ -96,7 +113,7 @@ infra/scripts/smoke_notify.sh --dry-run
 - Операционный статус обновлён в `docs/execution/PROGRESS.md`.
 
 ## 5) Безопасность
-- Никогда не печатать секреты (`YC_TOKEN`, `YC_IAM_TOKEN`, `NOTIFY_API_KEY`, bot token).
+- Никогда не печатать секреты (`YC_SA_JSON_CREDENTIALS`, `NOTIFY_API_KEY`, bot token).
 - В shell-скриптах: `set -euo pipefail`.
 - В секретных шагах CI: `set +x` и mask для секретов.
 - `YC_API_GW_NAME`
@@ -104,14 +121,13 @@ infra/scripts/smoke_notify.sh --dry-run
 - `YC_FUNCTION_ID` (для рендера `infra/apigw.yaml`)
 
 ### GitHub Actions Secrets
-- `YC_IAM_TOKEN` (предпочтительно) **или**
-- `YC_TOKEN` (fallback для обмена в IAM token)
+- `YC_SA_JSON_CREDENTIALS` (service account key JSON)
 
 > Значения секретов не должны выводиться в лог.
 
 ## 2) Workflow деплоя
 
-Файл: `.github/workflows/deploy.yml`.
+Файл: `.github/workflows/deploy.yml` (job привязан к GitHub Environment `production`).
 
 Триггеры:
 - `push` в `main` (боевой деплой);
@@ -119,10 +135,9 @@ infra/scripts/smoke_notify.sh --dry-run
 
 Основные шаги:
 1. Валидация обязательных переменных.
-2. Безопасная подготовка IAM token (`::add-mask::`, без `set -x`).
-3. Discovery контекста через `infra/scripts/yc_collect_context.sh`.
-4. Деплой функции через `infra/scripts/yc_deploy_function.sh`.
-5. Валидация/применение API Gateway через `infra/scripts/yc_apply_apigw.sh`.
+2. Проверка обязательных env и аутентификация через `YC_SA_JSON_CREDENTIALS`.
+3. Деплой функции через `yc-actions/yc-sls-function@v4`.
+4. Валидация/применение API Gateway через `infra/scripts/yc_bootstrap_notify_endpoint.sh`.
 
 ## 3) Локальный dry-run (без изменения ресурсов)
 
@@ -157,7 +172,7 @@ infra/scripts/yc_apply_apigw.sh --dry-run
 3. Проверить ответ gateway endpoint и логи функции.
 
 ## 5) Безопасность и аудит
-- Не печатать секреты (`YC_TOKEN`, `YC_IAM_TOKEN`, bot token).
+- Не печатать секреты (`YC_SA_JSON_CREDENTIALS`, bot token).
 - Для shell-скриптов использовать `set -euo pipefail`.
 - Для секретных участков принудительно держать `set +x`.
 - Все ошибки деплоя фиксировать в `docs/execution/PROGRESS.md`.

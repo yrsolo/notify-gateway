@@ -14,176 +14,27 @@ on:
           - "true"
           - "false"
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    environment: production
+    timeout-minutes: 25
 
     env:
-      YC_FOLDER_ID: ${{ vars.YC_FOLDER_ID }}
-      YC_FOLDER_ID_FALLBACK: ${{ secrets.YC_FOLDER_ID }}
-      YC_FUNCTION_NAME: ${{ vars.YC_FUNCTION_NAME }}
-      YC_CLOUD_FUNCTION_NAME: ${{ vars.YC_CLOUD_FUNCTION_NAME }}
-      YC_API_GW_NAME: ${{ vars.YC_API_GW_NAME }}
-      YC_SERVICE_ACCOUNT_ID: ${{ vars.YC_SERVICE_ACCOUNT_ID }}
-      YC_SERVICE_ACCOUNT_ID_FALLBACK: ${{ secrets.YC_SERVICE_ACCOUNT_ID }}
+      YC_FOLDER_ID: ${{ vars.YC_FOLDER_ID || secrets.YC_FOLDER_ID }}
+      YC_FUNCTION_NAME: ${{ vars.YC_FUNCTION_NAME || vars.YC_CLOUD_FUNCTION_NAME || secrets.YC_FUNCTION_NAME || secrets.YC_CLOUD_FUNCTION_NAME || 'notify-gateway' }}
+      YC_API_GW_NAME: ${{ vars.YC_API_GW_NAME || secrets.YC_API_GW_NAME || 'notify-gateway-gw' }}
+      YC_SERVICE_ACCOUNT_ID: ${{ vars.YC_SERVICE_ACCOUNT_ID || secrets.YC_SERVICE_ACCOUNT_ID }}
+      YC_FUNCTION_ENTRYPOINT: ${{ vars.YC_FUNCTION_ENTRYPOINT || secrets.YC_FUNCTION_ENTRYPOINT || 'handler.handler' }}
       FUNCTION_SOURCE_DIR: src
       FUNCTION_RUNTIME: python311
-      FUNCTION_ENTRYPOINT: handler.handler
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y jq zip
-
-      - name: Normalize function name alias
-        run: |
-          set -euo pipefail
-          if [[ -z "${YC_FUNCTION_NAME:-}" && -n "${YC_CLOUD_FUNCTION_NAME:-}" ]]; then
-            echo "YC_FUNCTION_NAME=${YC_CLOUD_FUNCTION_NAME}" >> "$GITHUB_ENV"
-          fi
-
-      - name: Prepare IAM token
-        env:
-          YC_TOKEN: ${{ secrets.YC_TOKEN }}
-          YC_IAM_TOKEN: ${{ secrets.YC_IAM_TOKEN }}
-        run: |
-          set -euo pipefail
-          set +x
-          if [[ -n "${YC_IAM_TOKEN:-}" ]]; then
-            echo "::add-mask::${YC_IAM_TOKEN}"
-            echo "YC_IAM_TOKEN=${YC_IAM_TOKEN}" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          if [[ -z "${YC_TOKEN:-}" ]]; then
-            echo "Either YC_IAM_TOKEN or YC_TOKEN secret must be configured" >&2
-            exit 1
-          fi
-
-          IAM_JSON=$(curl -sS -X POST "https://iam.api.cloud.yandex.net/iam/v1/tokens" \
-            -H "Content-Type: application/json" \
-            -d "{\"yandexPassportOauthToken\":\"${YC_TOKEN}\"}")
-
-          IAM_TOKEN=$(jq -r '.iamToken // empty' <<<"$IAM_JSON")
-          if [[ -z "$IAM_TOKEN" ]]; then
-            echo "Failed to exchange YC_TOKEN to IAM token" >&2
-            exit 1
-          fi
-
-          echo "::add-mask::${IAM_TOKEN}"
-          echo "YC_IAM_TOKEN=${IAM_TOKEN}" >> "$GITHUB_ENV"
-
-      - name: Resolve dynamic deploy config
-        env:
-          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          FUNCTION_NAME="${YC_FUNCTION_NAME:-${YC_CLOUD_FUNCTION_NAME:-notify-gateway}}"
-          FOLDER_ID="${YC_FOLDER_ID:-}"
-          SERVICE_ACCOUNT_ID="${YC_SERVICE_ACCOUNT_ID:-}"
-          API_GW_NAME="${YC_API_GW_NAME:-notify-gateway-gw}"
-
-          if [[ -z "$FOLDER_ID" && -n "${YC_FOLDER_ID_FALLBACK:-}" ]]; then
-            FOLDER_ID="${YC_FOLDER_ID_FALLBACK}"
-          fi
-
-          if [[ -z "$SERVICE_ACCOUNT_ID" && -n "${YC_SERVICE_ACCOUNT_ID_FALLBACK:-}" ]]; then
-            SERVICE_ACCOUNT_ID="${YC_SERVICE_ACCOUNT_ID_FALLBACK}"
-          fi
-
-          if [[ -z "$FOLDER_ID" && -n "$FUNCTION_NAME" ]]; then
-            echo "YC_FOLDER_ID is not set, trying auto-discovery by function name: ${FUNCTION_NAME}"
-
-            mapfile -t CLOUD_IDS < <(curl -sS -H "Authorization: Bearer ${YC_IAM_TOKEN}" \
-              "https://resource-manager.api.cloud.yandex.net/resource-manager/v1/clouds" \
-              | jq -r '.clouds[]?.id')
-
-            FOUND=0
-            FIRST_FOLDER=""
-            FOLDER_COUNT=0
-
-            for cloud_id in "${CLOUD_IDS[@]}"; do
-              mapfile -t FOLDER_IDS < <(curl -sS -H "Authorization: Bearer ${YC_IAM_TOKEN}" \
-                "https://resource-manager.api.cloud.yandex.net/resource-manager/v1/folders?cloudId=${cloud_id}" \
-                | jq -r '.folders[]?.id')
-
-              for folder_id in "${FOLDER_IDS[@]}"; do
-                if [[ -z "${FIRST_FOLDER}" ]]; then
-                  FIRST_FOLDER="${folder_id}"
-                fi
-                FOLDER_COUNT=$((FOLDER_COUNT + 1))
-
-                fn_id=$(curl -sS -H "Authorization: Bearer ${YC_IAM_TOKEN}" \
-                  "https://serverless-functions.api.cloud.yandex.net/functions/v1/functions?folderId=${folder_id}" \
-                  | jq -r --arg name "$FUNCTION_NAME" '.functions[]? | select(.name == $name) | .id' \
-                  | head -n1)
-
-                if [[ -n "$fn_id" ]]; then
-                  FOLDER_ID="$folder_id"
-                  FOUND=1
-                  break
-                fi
-              done
-
-              if [[ "$FOUND" -eq 1 ]]; then
-                break
-              fi
-            done
-
-            if [[ "$FOUND" -eq 0 && "$FOLDER_COUNT" -eq 1 ]]; then
-              echo "Function '${FUNCTION_NAME}' not found during discovery, but exactly one folder is accessible; using it."
-              FOLDER_ID="${FIRST_FOLDER}"
-            fi
-          fi
-
-          if [[ -n "$FOLDER_ID" && -z "$SERVICE_ACCOUNT_ID" ]]; then
-            mapfile -t SA_IDS < <(curl -sS -H "Authorization: Bearer ${YC_IAM_TOKEN}" \
-              "https://iam.api.cloud.yandex.net/iam/v1/serviceAccounts?folderId=${FOLDER_ID}" \
-              | jq -r '.serviceAccounts[]?.id')
-
-            if [[ "${#SA_IDS[@]}" -ge 1 ]]; then
-              SERVICE_ACCOUNT_ID="${SA_IDS[0]}"
-              if [[ "${#SA_IDS[@]}" -gt 1 ]]; then
-                echo "Multiple service accounts found in folder; using first: ${SERVICE_ACCOUNT_ID}"
-              fi
-            fi
-          fi
-
-          echo "Resolved deploy config:"
-          echo "- folder: ${FOLDER_ID:-<not-set>}"
-          echo "- function: ${FUNCTION_NAME:-<not-set>}"
-          echo "- service account: ${SERVICE_ACCOUNT_ID:-<not-set>}"
-          echo "- api gateway: ${API_GW_NAME:-<not-set>}"
-
-          echo "YC_FUNCTION_NAME=${FUNCTION_NAME}" >> "$GITHUB_ENV"
-          echo "YC_FOLDER_ID=${FOLDER_ID}" >> "$GITHUB_ENV"
-          echo "YC_SERVICE_ACCOUNT_ID=${SERVICE_ACCOUNT_ID}" >> "$GITHUB_ENV"
-          echo "YC_API_GW_NAME=${API_GW_NAME}" >> "$GITHUB_ENV"
-
-      - name: Validate resolved config
-        run: |
-          set -euo pipefail
-          test -n "${YC_FOLDER_ID:-}" || { echo "YC_FOLDER_ID is required (vars.YC_FOLDER_ID or secret YC_FOLDER_ID)" >&2; exit 1; }
-          test -n "${YC_FUNCTION_NAME:-}" || {
-            echo "YC_FUNCTION_NAME is required (or set YC_CLOUD_FUNCTION_NAME as alias)" >&2
-            exit 1
-          }
-          test -n "${YC_SERVICE_ACCOUNT_ID:-}" || { echo "YC_SERVICE_ACCOUNT_ID is required (vars.YC_SERVICE_ACCOUNT_ID or secret YC_SERVICE_ACCOUNT_ID)" >&2; exit 1; }
-
-      - name: Install YC CLI
-        run: |
-          set -euo pipefail
-          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
-          echo "YC_CLI_INITIALIZATION_SILENCE=true" >> "$GITHUB_ENV"
-          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
 
       - name: Resolve dry-run mode
         run: |
@@ -194,27 +45,60 @@ jobs:
             echo "DRY_RUN=false" >> "$GITHUB_ENV"
           fi
 
-      - name: Collect YC context
+      - name: Validate required config
         env:
-          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
+          YC_SA_JSON_CREDENTIALS: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
         run: |
           set -euo pipefail
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            infra/scripts/yc_collect_context.sh --dry-run
-          else
-            infra/scripts/yc_collect_context.sh
-          fi
+          test -n "${YC_SA_JSON_CREDENTIALS:-}" || { echo "YC_SA_JSON_CREDENTIALS secret is required" >&2; exit 1; }
+          test -n "${YC_FOLDER_ID:-}" || { echo "YC_FOLDER_ID is required (vars or secrets)" >&2; exit 1; }
+          test -n "${YC_FUNCTION_NAME:-}" || { echo "YC_FUNCTION_NAME (or YC_CLOUD_FUNCTION_NAME) is required" >&2; exit 1; }
+          test -n "${YC_SERVICE_ACCOUNT_ID:-}" || { echo "YC_SERVICE_ACCOUNT_ID is required (vars or secrets)" >&2; exit 1; }
+          test -n "${YC_FUNCTION_ENTRYPOINT:-}" || { echo "YC_FUNCTION_ENTRYPOINT is required" >&2; exit 1; }
 
-      - name: Deploy Function
-        env:
-          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
+      - name: Install dependencies
         run: |
           set -euo pipefail
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            infra/scripts/yc_deploy_function.sh --dry-run
-          else
-            infra/scripts/yc_deploy_function.sh
-          fi
+          sudo apt-get update
+          sudo apt-get install -y jq zip
+
+      - name: Deploy function version
+        if: env.DRY_RUN != 'true'
+        uses: yc-actions/yc-sls-function@v4
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+          folder-id: ${{ env.YC_FOLDER_ID }}
+          function-name: ${{ env.YC_FUNCTION_NAME }}
+          runtime: ${{ env.FUNCTION_RUNTIME }}
+          entrypoint: ${{ env.YC_FUNCTION_ENTRYPOINT }}
+          service-account: ${{ env.YC_SERVICE_ACCOUNT_ID }}
+          include: |
+            src/**
+          exclude: |
+            .git/**
+            .github/**
+            build/**
+            docs/**
+
+      - name: Install YC CLI
+        run: |
+          set -euo pipefail
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
+          echo "YC_CLI_INITIALIZATION_SILENCE=true" >> "$GITHUB_ENV"
+          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
+
+      - name: Configure YC CLI auth via service account key
+        env:
+          YC_SA_JSON_CREDENTIALS: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          KEY_FILE="$RUNNER_TEMP/yc-sa-key.json"
+          printf '%s' "${YC_SA_JSON_CREDENTIALS}" > "$KEY_FILE"
+
+          yc config profile create ci >/dev/null 2>&1 || true
+          yc config profile activate ci
+          yc config set service-account-key "$KEY_FILE"
+          yc config set folder-id "${YC_FOLDER_ID}"
 
       - name: Resolve function id
         run: |
@@ -227,8 +111,6 @@ jobs:
           echo "YC_FUNCTION_ID=${FUNCTION_ID}" >> "$GITHUB_ENV"
 
       - name: Apply API Gateway spec and resolve endpoint
-        env:
-          YC_IAM_TOKEN: ${{ env.YC_IAM_TOKEN }}
         run: |
           set -euo pipefail
 
