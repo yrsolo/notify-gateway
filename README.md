@@ -7,6 +7,9 @@
 Сейчас репозиторий находится на **этапе планирования**: зафиксированы границы MVP, план работ и требования к окружению/доступам.
 
 - План этапов: `docs/PLAN.md`
+- Исполнительный stage-план: `docs/execution/STAGE_PLAN.md`
+- Задачи текущей стадии: `docs/execution/CURRENT_STAGE_TASKS.md`
+- Прогресс выполнения: `docs/execution/PROGRESS.md`
 - Переменные окружения и доступы для Yandex Cloud: `docs/ENV_AND_ACCESS.md`
 - Текущий операционный статус и блокеры Codex/YC: `docs/STATUS.md`
 
