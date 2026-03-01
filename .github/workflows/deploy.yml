@@ -112,25 +112,25 @@ jobs:
           printf '%s' "${YC_SA_JSON_CREDENTIALS}" > "$KEY_FILE"
 
           IAM_TOKEN=$(KEY_FILE="$KEY_FILE" python - <<'PYTOKEN'
-import json
-import os
-import urllib.request
+          import json
+          import os
+          import urllib.request
 
-key_file = os.environ["KEY_FILE"]
-with open(key_file, "r", encoding="utf-8") as fh:
-    key = json.load(fh)
+          key_file = os.environ["KEY_FILE"]
+          with open(key_file, "r", encoding="utf-8") as fh:
+              key = json.load(fh)
 
-payload = json.dumps({"serviceAccountKey": key}).encode("utf-8")
-req = urllib.request.Request(
-    "https://iam.api.cloud.yandex.net/iam/v1/tokens",
-    data=payload,
-    headers={"Content-Type": "application/json"},
-    method="POST",
-)
-with urllib.request.urlopen(req, timeout=60) as resp:
-    print(json.load(resp).get("iamToken", ""))
-PYTOKEN
-)
+          payload = json.dumps({"serviceAccountKey": key}).encode("utf-8")
+          req = urllib.request.Request(
+              "https://iam.api.cloud.yandex.net/iam/v1/tokens",
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=60) as resp:
+              print(json.load(resp).get("iamToken", ""))
+          PYTOKEN
+          )
 
           test -n "${IAM_TOKEN}" || { echo "Failed to obtain YC_IAM_TOKEN" >&2; exit 1; }
           echo "::add-mask::${IAM_TOKEN}"
