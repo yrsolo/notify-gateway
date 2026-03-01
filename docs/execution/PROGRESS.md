@@ -648,3 +648,28 @@ Stage 4 — Production readiness (S4: Stabilize CI/Deploy).
 
 ### Next
 - Выполнить S4-T08C: добавить smoke-проверки bootstrap/endpoint в CI после деплоя.
+
+## 2026-03-01 — S4-T08C
+
+### Stage
+Stage 4 — Production readiness (S4: Stabilize CI/Deploy).
+
+### Done
+- Зафиксировано выполнение `S4-T08C` в `docs/execution/CURRENT_STAGE_TASKS.md`.
+- Обновлён `docs/plan/S4-T08C.md` с фактическим объёмом реализации smoke-check:
+  - проверка HTTP-статуса;
+  - проверка JSON-формы ответа (`ok=true`, numeric `telegram_message_id`);
+  - запуск после bootstrap шага в deploy workflow;
+  - поддержка dry-run режима.
+- Прогнаны локальные проверки smoke-скрипта и базовая валидация Python bootstrap utility.
+
+### Blockers
+- `origin` remote отсутствует в локальном git clone, поэтому обязательная синхронизация `git fetch origin && git rebase origin/main` не может быть выполнена в текущем окружении.
+- Владелец: владелец репозитория/CI окружения.
+- Действия для снятия:
+  1. Добавить корректный remote `origin` на upstream-репозиторий.
+  2. Убедиться, что у runner/пользователя есть доступ на чтение remote.
+- Критерий снятия: команда `git fetch origin` завершается без ошибок.
+
+### Next
+- Выполнить S4-T08D: документировать secrets/env и rollback для обновлённого deploy-потока.
