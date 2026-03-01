@@ -1,108 +1,67 @@
-# Current stage tasks
+# Current Stage — S4 (P0): Stabilize CI/Deploy
 
-Текущая стадия: **Stage 4 — Production readiness (maintenance mode)**.
+Owner: engineering
+Target: reduce CI fragility by removing `yc` CLI usage in GitHub Actions.
 
-> Формат: ID / описание / owner / оценка / критерии приёмки / артефакт проверки / статус.
+## S4-T08A — Python YC API bootstrap tool
+Goal: create a small Python utility used in CI to create/update API Gateway endpoint and (if applicable) sync secrets.
 
-## Stage 4 completed baseline
+Files to create/change:
+- `tools/yc_bootstrap.py` (new)  [NOTE: do not implement now, plan-only]
+- `docs/plan/S4-T08A.md` (new)
 
-- [x] **S4-T01** Описать регламент ротации секретов и расписание.
-  - Owner: agent
-  - Оценка: 0.5d
-  - Артефакт проверки: `docs/SECRET_ROTATION.md`.
-  - Статус: `done`
+Acceptance criteria:
+- [ ] Plan describes required YC API operations (gateway create/update, spec update, deployment).
+- [ ] Plan lists required inputs (service account JSON / IAM token method / folder_id / cloud_id etc).
+- [ ] Plan specifies outputs consumed by CI (NOTIFY_ENDPOINT, gateway id/name).
+- [ ] Plan includes rollback steps.
 
-- [x] **S4-T02** Провести ревизию IAM ролей и предложить least-privilege матрицу.
-  - Owner: agent
-  - Оценка: 0.5d
-  - Артефакт проверки: `docs/IAM_LEAST_PRIVILEGE.md`.
-  - Статус: `done`
+Test plan:
+- [ ] Smoke: run tool in dry-run mode in CI (no changes), validate auth + permissions.
+- [ ] Smoke: run tool against a test env to ensure endpoint exists and is callable.
 
-- [x] **S4-T03** Обновить on-call/ops документацию и runbook инцидентов.
-  - Owner: agent
-  - Оценка: 0.5d
-  - Артефакт проверки: `docs/ONCALL_OPS_PLAYBOOK.md`.
-  - Статус: `done`
+Rollout:
+- Introduce tool in parallel (no deletion of old path).
+Rollback:
+- Keep old yc CLI path until new path is proven in prod.
 
-- [x] **S4-T04** Добавить совместимость с alias `YC_CLOUD_FUNCTION_NAME` для deploy workflow.
-  - Owner: agent
-  - Оценка: 0.25d
-  - Артефакт проверки: `.github/workflows/deploy.yml`.
-  - Статус: `done`
+## S4-T08B — Update GitHub Actions deploy workflow
+Goal: switch deploy workflow to call `tools/yc_bootstrap.py` instead of `yc` CLI scripts.
 
-- [x] **S4-T05** Добавить bootstrap-скрипт для восстановления `YC_API_GW_NAME` и `NOTIFY_ENDPOINT`.
-  - Owner: agent
-  - Оценка: 0.5d
-  - Артефакт проверки: `infra/scripts/yc_bootstrap_notify_endpoint.sh`, `docs/DEPLOY_RUNBOOK.md`.
-  - Статус: `done`
+Files to create/change:
+- `.github/workflows/deploy.yml`
+- `docs/plan/S4-T08B.md` (new)
 
-- [x] **S4-T06** Убрать hard-dependency от `rg` в bootstrap API Gateway.
-  - Owner: agent
-  - Оценка: 0.25d
-  - Артефакт проверки: `infra/scripts/yc_bootstrap_notify_endpoint.sh`.
-  - Статус: `done`
+Acceptance criteria:
+- [ ] `yc` CLI installation removed from workflow.
+- [ ] Workflow exports same env outputs (NOTIFY_ENDPOINT etc).
+- [ ] Smoke-check step still runs.
 
-- [x] **S4-T07** Поддержать публичный домен API в bootstrap/deploy.
-  - Owner: agent
-  - Оценка: 0.25d
-  - Артефакт проверки: `infra/scripts/yc_bootstrap_notify_endpoint.sh`, `.github/workflows/deploy.yml`, `docs/DEPLOY_RUNBOOK.md`.
-  - Статус: `done`
+Test plan:
+- [ ] CI run on branch with dry-run.
+- [ ] One controlled deploy to staging.
 
-## Maintenance backlog (приоритет: исправление деплоя)
+Rollback:
+- Revert workflow file.
 
-- [ ] **S4-T08 (P0)** Убрать установку YC CLI из deploy workflow и сохранить функциональность через API/скрипты.
-  - Owner: agent
-  - Оценка: 1d
-  - Критерии приёмки:
-    1. В `.github/workflows/deploy.yml` удалены шаги установки/конфигурации `yc` CLI.
-    2. Разрешение Function/Gateway контекста выполняется без `yc` binary.
-    3. Dry-run deploy workflow проходит без YC CLI.
-  - Артефакт проверки: `.github/workflows/deploy.yml`, `infra/scripts/*.sh`, CI logs.
-  - Статус: `planned`
+## S4-T08C — Add smoke tests for bootstrap + endpoint
+Goal: ensure CI validates that endpoint exists and notification call works.
 
-- [ ] **S4-T09 (P1)** Добавить шаблоны сообщений `notification`, `error`, `raw`.
-  - Owner: agent
-  - Оценка: 1d
-  - Критерии приёмки:
-    1. Поддержаны 3 шаблона в `POST /notify`.
-    2. Для `notification`/`error` в сообщении есть проект, дата/время, текст и служебные поля.
-    3. Для `raw` отправляется только исходный текст.
-  - Артефакт проверки: `src/handler.py`, `tests/test_handler.py`, `README.md`.
-  - Статус: `planned`
+Files to create/change:
+- `scripts/smoke_notify.sh` (or python) (plan-only)
+- `docs/plan/S4-T08C.md` (new)
 
-- [ ] **S4-T10 (P1)** Добавить опциональную отправку в другой чат (`chat_id` или alias `chat`).
-  - Owner: agent
-  - Оценка: 0.75d
-  - Критерии приёмки:
-    1. Поддержан payload override через `chat_id`.
-    2. Поддержан alias через env-мапу (`TELEGRAM_CHAT_ALIASES_JSON`).
-    3. Добавлены тесты на дефолтный чат, override и невалидный alias.
-  - Артефакт проверки: `src/handler.py`, `tests/test_handler.py`, `infra/function/env/*.env.example`, `README.md`.
-  - Статус: `planned`
+Acceptance criteria:
+- [ ] Smoke test checks HTTP status + basic JSON shape.
+- [ ] Smoke test runs after deploy.
 
-- [ ] **S4-T11 (P1)** Добавить help-режим API (`/help`, `/?`, пустой запрос).
-  - Owner: agent
-  - Оценка: 0.5d
-  - Критерии приёмки:
-    1. API возвращает справку с поддерживаемыми шаблонами и примерами payload.
-    2. Описаны поля, валидация и маршрутизация по чатам.
-    3. Добавлены тесты help-режима.
-  - Артефакт проверки: `src/handler.py`, `tests/test_handler.py`, `README.md`, `infra/apigw.yaml` (при необходимости).
-  - Статус: `planned`
+## S4-T08D — Document secrets/env + rollback
+Goal: make it obvious what secrets are needed and how to recover from failures.
 
-- [ ] **S4-T12 (P2)** Сформировать backlog полезных улучшений v2 и критерии приоритезации.
-  - Owner: agent
-  - Оценка: 0.5d
-  - Критерии приёмки:
-    1. Зафиксированы эпики reliability/observability/security.
-    2. Для каждого эпика указаны оценка, риск, зависимость и owner.
-  - Артефакт проверки: `docs/PLAN.md` (или отдельный `docs/ROADMAP_V2.md`).
-  - Статус: `planned`
+Files to create/change:
+- `docs/plan/S4-T08D.md` (new)
+- Update README or docs if such section already exists.
 
-## Program status
-- Все стадии `Stage 0..4` закрыты по execution-трекеру.
-- Репозиторий в maintenance mode, новые change-requests исполняются как атомарные задачи Stage 4.
-
-## WIP limit
-- Одновременно в `in_progress` не более 2 задач.
-- Текущее состояние: 0 `in_progress`.
+Acceptance criteria:
+- [ ] List of required GH secrets and example values format.
+- [ ] Clear rollback instructions.
