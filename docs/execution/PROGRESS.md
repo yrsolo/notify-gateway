@@ -713,3 +713,47 @@ Stage 5 — Product features.
 
 ### Next
 - Выполнить S5-T10: chat routing (`chat_id` override + aliases).
+
+## 2026-03-01 — S5-T10
+
+### Stage
+Stage 5 — Product features.
+
+### Done
+- Реализован routing чатов для `POST /notify`:
+  - поддержан payload override `chat_id`;
+  - поддержан routing по `chat_alias` через env `TELEGRAM_CHAT_ALIASES`;
+  - добавлена строгая валидация формата chat targets и алиасов;
+  - добавлена проверка взаимоисключаемости `chat_id` и `chat_alias`.
+- Добавлены unit-тесты на routing сценарии:
+  - override по `chat_id`;
+  - резолв alias;
+  - fallback на default `TELEGRAM_CHAT_ID`;
+  - reject unknown alias и конфликтных полей;
+  - reject invalid alias env-конфигурации.
+- README обновлён: документирован контракт routing полей и формат `TELEGRAM_CHAT_ALIASES`.
+
+### Blockers
+- Нет.
+
+### Next
+- Выполнить S5-T11: help mode/endpoint с JSON-справкой и примерами.
+
+## 2026-03-01 — S5-T11
+
+### Stage
+Stage 5 — Product features.
+
+### Done
+- Реализован help-режим API без зависимости от авторизации:
+  - `GET /notify/help` возвращает JSON-справку по контракту;
+  - `POST /notify` с `{ "help": true }` возвращает ту же справку.
+- В ответ help-режима добавлены обязательные/опциональные поля и примеры payload.
+- Добавлены unit-тесты на оба входа в help-режим.
+- README обновлён: задокументированы способы вызова help-режима.
+
+### Blockers
+- Нет.
+
+### Next
+- Зафиксировать завершение Stage 5 и подготовить следующий backlog работ.

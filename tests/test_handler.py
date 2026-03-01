@@ -197,3 +197,223 @@ def test_bad_request_when_template_invalid(monkeypatch):
 
     assert result["statusCode"] == 400
     assert "field 'template' must be one of" in json.loads(result["body"])["error"]
+
+
+def test_chat_id_override_routes_to_custom_chat(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "default-chat")
+
+    captured = {}
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def read(self):
+            return json.dumps({"ok": True, "result": {"message_id": 780}}).encode("utf-8")
+
+    def _fake_urlopen(req, timeout):
+        del timeout
+        payload = json.loads(req.data.decode("utf-8"))
+        captured["chat_id"] = payload["chat_id"]
+        return _FakeResponse()
+
+    monkeypatch.setattr(request, "urlopen", _fake_urlopen)
+
+    event = _event(
+        {
+            "project": "billing",
+            "title": "Lag",
+            "message": "msg",
+            "chat_id": "-100123456789",
+        }
+    )
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    assert captured["chat_id"] == "-100123456789"
+
+
+
+def test_chat_alias_routes_to_mapped_chat(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "default-chat")
+    monkeypatch.setenv("TELEGRAM_CHAT_ALIASES", "ops=-10010,alerts=@alerts_room")
+
+    captured = {}
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def read(self):
+            return json.dumps({"ok": True, "result": {"message_id": 781}}).encode("utf-8")
+
+    def _fake_urlopen(req, timeout):
+        del timeout
+        payload = json.loads(req.data.decode("utf-8"))
+        captured["chat_id"] = payload["chat_id"]
+        return _FakeResponse()
+
+    monkeypatch.setattr(request, "urlopen", _fake_urlopen)
+
+    event = _event(
+        {
+            "project": "billing",
+            "title": "Lag",
+            "message": "msg",
+            "chat_alias": "ops",
+        }
+    )
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    assert captured["chat_id"] == "-10010"
+
+
+
+def test_default_chat_used_when_no_override(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "default-chat")
+    monkeypatch.setenv("TELEGRAM_CHAT_ALIASES", "ops=-10010")
+
+    captured = {}
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def read(self):
+            return json.dumps({"ok": True, "result": {"message_id": 782}}).encode("utf-8")
+
+    def _fake_urlopen(req, timeout):
+        del timeout
+        payload = json.loads(req.data.decode("utf-8"))
+        captured["chat_id"] = payload["chat_id"]
+        return _FakeResponse()
+
+    monkeypatch.setattr(request, "urlopen", _fake_urlopen)
+
+    event = _event(
+        {
+            "project": "billing",
+            "title": "Lag",
+            "message": "msg",
+        }
+    )
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    assert captured["chat_id"] == "default-chat"
+
+
+
+def test_bad_request_for_unknown_chat_alias(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "default-chat")
+    monkeypatch.setenv("TELEGRAM_CHAT_ALIASES", "ops=-10010")
+
+    event = _event(
+        {
+            "project": "billing",
+            "title": "Lag",
+            "message": "msg",
+            "chat_alias": "unknown",
+        }
+    )
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 400
+    assert "unknown chat alias" in json.loads(result["body"])["error"]
+
+
+
+def test_bad_request_when_chat_override_and_alias_both_set(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "default-chat")
+
+    event = _event(
+        {
+            "project": "billing",
+            "title": "Lag",
+            "message": "msg",
+            "chat_id": "-10010",
+            "chat_alias": "ops",
+        }
+    )
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 400
+    assert "mutually exclusive" in json.loads(result["body"])["error"]
+
+
+
+def test_server_error_when_aliases_env_invalid(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "default-chat")
+    monkeypatch.setenv("TELEGRAM_CHAT_ALIASES", "ops")
+
+    event = _event(
+        {
+            "project": "billing",
+            "title": "Lag",
+            "message": "msg",
+        }
+    )
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 500
+    assert "invalid TELEGRAM_CHAT_ALIASES format" in json.loads(result["body"])["error"]
+
+
+def test_help_mode_via_get_path_without_auth():
+    event = {
+        "httpMethod": "GET",
+        "path": "/notify/help",
+        "headers": {},
+        "body": "",
+    }
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["ok"] is True
+    assert body["usage"] == "POST /notify"
+    assert "project" in body["required_fields"]
+
+
+
+def test_help_mode_via_payload_flag_without_auth():
+    event = {
+        "headers": {},
+        "body": json.dumps({"help": True}),
+    }
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["ok"] is True
+    assert "minimal" in body["examples"]
