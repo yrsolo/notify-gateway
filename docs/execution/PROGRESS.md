@@ -590,3 +590,28 @@ Stage 4 — Production readiness (maintenance mode).
 
 ### Next
 - Взять в `in_progress` задачу `S4-T08 (P0)` и выполнить рефактор deploy workflow без YC CLI.
+
+## 2026-03-01 — S4-T08A (plan)
+
+### Stage
+Stage 4 — Production readiness (S4: Stabilize CI/Deploy).
+
+### Done
+- Детализирован план задачи `S4-T08A` в `docs/plan/S4-T08A.md`.
+- Зафиксированы:
+  - ожидаемый CLI-контракт будущего `tools/yc_bootstrap.py`;
+  - необходимые операции YC API (discover/create/update/poll/resolve endpoint);
+  - обязательные входы и выходы для CI;
+  - требования по безопасному логированию и rollback.
+- Обновлён `docs/execution/CURRENT_STAGE_TASKS.md`: acceptance-критерии для S4-T08A отмечены выполненными.
+
+### Blockers
+- `origin` remote отсутствует в локальном git clone, поэтому обязательная синхронизация `git fetch origin && git rebase origin/main` не может быть выполнена в текущем окружении.
+- Владелец: владелец репозитория/CI окружения.
+- Действия для снятия:
+  1. Добавить корректный remote `origin` на upstream-репозиторий.
+  2. Убедиться, что у runner/пользователя есть доступ на чтение remote.
+- Критерий снятия: команда `git fetch origin` завершается без ошибок.
+
+### Next
+- Выполнить S4-T08B: обновить deploy workflow для перехода на Python bootstrap utility.

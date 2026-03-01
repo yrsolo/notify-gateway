@@ -3,7 +3,7 @@
 Owner: engineering
 Target: reduce CI fragility by removing `yc` CLI usage in GitHub Actions.
 
-## S4-T08A — Python YC API bootstrap tool
+## S4-T08A — Python YC API bootstrap tool ✅ (plan completed)
 Goal: create a small Python utility used in CI to create/update API Gateway endpoint and (if applicable) sync secrets.
 
 Files to create/change:
@@ -11,10 +11,10 @@ Files to create/change:
 - `docs/plan/S4-T08A.md` (new)
 
 Acceptance criteria:
-- [ ] Plan describes required YC API operations (gateway create/update, spec update, deployment).
-- [ ] Plan lists required inputs (service account JSON / IAM token method / folder_id / cloud_id etc).
-- [ ] Plan specifies outputs consumed by CI (NOTIFY_ENDPOINT, gateway id/name).
-- [ ] Plan includes rollback steps.
+- [x] Plan describes required YC API operations (gateway create/update, spec update, deployment).
+- [x] Plan lists required inputs (service account JSON / IAM token method / folder_id / cloud_id etc).
+- [x] Plan specifies outputs consumed by CI (NOTIFY_ENDPOINT, gateway id/name).
+- [x] Plan includes rollback steps.
 
 Test plan:
 - [ ] Smoke: run tool in dry-run mode in CI (no changes), validate auth + permissions.
