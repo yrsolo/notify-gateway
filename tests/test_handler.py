@@ -1,3 +1,4 @@
+import base64
 import json
 from urllib import error
 from urllib import request
@@ -613,3 +614,148 @@ def test_error_logs_include_request_id_and_safe_context(monkeypatch):
     assert "context" in captured_logs[-1]
     assert "error" in captured_logs[-1]["context"]
     assert "token" not in json.dumps(captured_logs[-1])
+
+
+def test_non_dict_headers_treated_as_missing_auth(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    event = {
+        "headers": "not-a-dict",
+        "body": json.dumps({"project": "billing", "title": "Lag", "message": "msg"}),
+    }
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 401
+    assert json.loads(result["body"]) == {"ok": False, "error": "invalid API key"}
+
+
+def test_help_mode_precedence_over_auth(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    event = {
+        "httpMethod": "GET",
+        "path": "/notify/help",
+        "headers": {"Authorization": "Bearer wrong"},
+        "body": "",
+    }
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["ok"] is True
+    assert body["usage"] == "POST /notify"
+
+
+def test_help_payload_true_precedence_over_auth(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    event = {
+        "headers": {"Authorization": "Bearer wrong"},
+        "body": json.dumps({"help": True}),
+    }
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body["ok"] is True
+
+
+def test_invalid_base64_request_body(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    event = {
+        "headers": {"Authorization": "Bearer test-key"},
+        "isBase64Encoded": True,
+        "body": "@@@not-base64@@@",
+    }
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 400
+    assert "invalid base64" in json.loads(result["body"])["error"]
+
+
+def test_valid_base64_json_body(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def read(self):
+            return json.dumps({"ok": True, "result": {"message_id": 990}}).encode("utf-8")
+
+    monkeypatch.setattr(request, "urlopen", lambda req, timeout: _FakeResponse())
+
+    encoded = base64.b64encode(
+        json.dumps({"project": "billing", "title": "Lag", "message": "msg"}).encode("utf-8")
+    ).decode("utf-8")
+    event = {
+        "headers": {"Authorization": "Bearer test-key"},
+        "isBase64Encoded": True,
+        "body": encoded,
+    }
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    body = json.loads(result["body"])
+    assert body == {"ok": True, "telegram_message_id": 990}
+
+
+def test_invalid_retry_backoff_env_returns_server_error(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+    monkeypatch.setenv("TELEGRAM_RETRY_BACKOFF_SECONDS", "NaNx")
+
+    event = _event({"project": "billing", "title": "Lag", "message": "msg"})
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 500
+    assert "TELEGRAM_RETRY_BACKOFF_SECONDS must be a number" in json.loads(result["body"])["error"]
+
+
+def test_response_shape_stable_for_success_and_errors(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def read(self):
+            return json.dumps({"ok": True, "result": {"message_id": 991}}).encode("utf-8")
+
+    monkeypatch.setattr(request, "urlopen", lambda req, timeout: _FakeResponse())
+
+    ok_result = handler.handler(
+        _event({"project": "billing", "title": "Lag", "message": "msg"}),
+        None,
+    )
+    assert sorted(ok_result.keys()) == ["body", "headers", "statusCode"]
+    assert ok_result["headers"] == {"Content-Type": "application/json"}
+
+    bad_result = handler.handler(_event({"project": "billing", "title": "Lag"}), None)
+    assert sorted(bad_result.keys()) == ["body", "headers", "statusCode"]
+    assert bad_result["headers"] == {"Content-Type": "application/json"}
