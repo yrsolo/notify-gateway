@@ -138,19 +138,85 @@ jobs:
           PYKEY
 
           IAM_TOKEN=$(KEY_FILE="$KEY_FILE" python - <<'PYTOKEN'
+          import base64
           import json
           import os
-          import urllib.request
+          import subprocess
+          import tempfile
+          import time
           import urllib.error
+          import urllib.request
+
+          def b64url(raw: bytes) -> str:
+              return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
           key_file = os.environ["KEY_FILE"]
           with open(key_file, "r", encoding="utf-8") as fh:
               key = json.load(fh)
 
-          payload = json.dumps({"serviceAccountKey": key}).encode("utf-8")
+          key_id = key.get("id")
+          service_account_id = key.get("service_account_id")
+          private_key = key.get("private_key")
+
+          if not key_id:
+              raise SystemExit("YC_SA_JSON_CREDENTIALS is missing key id")
+          if not service_account_id:
+              raise SystemExit("YC_SA_JSON_CREDENTIALS is missing service_account_id")
+          if not private_key:
+              raise SystemExit("YC_SA_JSON_CREDENTIALS is missing private_key")
+
+          now = int(time.time())
+          header = {"alg": "PS256", "typ": "JWT", "kid": key_id}
+          payload = {
+              "aud": "https://iam.api.cloud.yandex.net/iam/v1/tokens",
+              "iss": service_account_id,
+              "iat": now,
+              "exp": now + 360,
+          }
+
+          signing_input = (
+              f"{b64url(json.dumps(header, separators=(',', ':')).encode('utf-8'))}."
+              f"{b64url(json.dumps(payload, separators=(',', ':')).encode('utf-8'))}"
+          )
+
+          with tempfile.TemporaryDirectory() as td:
+              key_path = os.path.join(td, "pk.pem")
+              sig_path = os.path.join(td, "sig.bin")
+
+              with open(key_path, "w", encoding="utf-8") as fh:
+                  fh.write(private_key)
+
+              proc = subprocess.run(
+                  [
+                      "openssl",
+                      "dgst",
+                      "-sha256",
+                      "-sigopt",
+                      "rsa_padding_mode:pss",
+                      "-sigopt",
+                      "rsa_pss_saltlen:-1",
+                      "-sign",
+                      key_path,
+                      "-out",
+                      sig_path,
+                  ],
+                  input=signing_input.encode("utf-8"),
+                  check=False,
+                  capture_output=True,
+              )
+              if proc.returncode != 0:
+                  err = proc.stderr.decode("utf-8", errors="replace")
+                  raise SystemExit(f"Failed to sign IAM JWT: {err}")
+
+              with open(sig_path, "rb") as fh:
+                  signature = fh.read()
+
+          jwt_token = f"{signing_input}.{b64url(signature)}"
+
+          req_body = json.dumps({"jwt": jwt_token}).encode("utf-8")
           req = urllib.request.Request(
               "https://iam.api.cloud.yandex.net/iam/v1/tokens",
-              data=payload,
+              data=req_body,
               headers={"Content-Type": "application/json"},
               method="POST",
           )
