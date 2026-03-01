@@ -2,11 +2,14 @@ import base64
 import html
 import json
 import os
+import re
 from typing import Any
 from urllib import error, request
 
 _ALLOWED_LEVELS = {"info", "warning", "error"}
 _ALLOWED_TEMPLATES = {"notification", "error", "raw"}
+_ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+_CHAT_TARGET_RE = re.compile(r"^-?\d+$|^@[A-Za-z][A-Za-z0-9_]{4,}$")
 _LEVEL_EMOJI = {
     "info": "🟩",
     "warning": "🟨",
@@ -17,10 +20,14 @@ _LEVEL_EMOJI = {
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     del context
 
+    if _is_help_request(event):
+        return _response(200, _help_response_body())
+
     try:
         api_keys = _load_api_keys()
         token = _required_env("TELEGRAM_BOT_TOKEN")
         chat_id = _required_env("TELEGRAM_CHAT_ID")
+        chat_aliases = _load_chat_aliases()
     except ValueError as exc:
         return _response(500, {"ok": False, "error": str(exc)})
 
@@ -37,15 +44,67 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     message_text = _format_message(normalized)
 
     try:
+        resolved_chat_id = _resolve_chat_id(chat_id, chat_aliases, normalized)
+    except ValueError as exc:
+        return _response(400, {"ok": False, "error": str(exc)})
+
+    try:
         telegram_message_id = _send_telegram_message(
             token=token,
-            chat_id=chat_id,
+            chat_id=resolved_chat_id,
             text=message_text,
         )
     except RuntimeError as exc:
         return _response(502, {"ok": False, "error": str(exc)})
 
     return _response(200, {"ok": True, "telegram_message_id": telegram_message_id})
+
+
+def _is_help_request(event: dict[str, Any]) -> bool:
+    method = str(event.get("httpMethod", "")).upper()
+    path = str(event.get("path", ""))
+
+    if method == "GET" and path.rstrip("/") == "/notify/help":
+        return True
+
+    try:
+        payload = _parse_body(event)
+    except ValueError:
+        return False
+
+    help_value = payload.get("help")
+    return help_value is True
+
+
+def _help_response_body() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "usage": "POST /notify",
+        "required_fields": ["project", "title", "message"],
+        "optional_fields": [
+            "env",
+            "level",
+            "template",
+            "tags",
+            "extra",
+            "chat_id",
+            "chat_alias",
+        ],
+        "examples": {
+            "minimal": {
+                "project": "billing",
+                "title": "Queue lag",
+                "message": "Queue > 1000",
+            },
+            "routed": {
+                "project": "billing",
+                "title": "Error spike",
+                "message": "5xx > 2%",
+                "template": "error",
+                "chat_alias": "ops",
+            },
+        },
+    }
 
 
 def _required_env(name: str) -> str:
@@ -61,6 +120,37 @@ def _load_api_keys() -> set[str]:
     if not keys:
         raise ValueError("NOTIFY_API_KEYS must contain at least one key")
     return keys
+
+
+def _load_chat_aliases() -> dict[str, str]:
+    raw_value = os.getenv("TELEGRAM_CHAT_ALIASES", "").strip()
+    if not raw_value:
+        return {}
+
+    aliases: dict[str, str] = {}
+    for pair in raw_value.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            raise ValueError(
+                "invalid TELEGRAM_CHAT_ALIASES format: expected alias=chat_id pairs"
+            )
+
+        alias, target = pair.split("=", 1)
+        alias = alias.strip()
+        target = target.strip()
+
+        if not _ALIAS_RE.fullmatch(alias):
+            raise ValueError(f"invalid chat alias '{alias}' in TELEGRAM_CHAT_ALIASES")
+        if not _is_valid_chat_target(target):
+            raise ValueError(f"invalid chat target for alias '{alias}'")
+        if alias in aliases:
+            raise ValueError(f"duplicate chat alias '{alias}' in TELEGRAM_CHAT_ALIASES")
+
+        aliases[alias] = target
+
+    return aliases
 
 
 def _get_header(event: dict[str, Any], key: str) -> str:
@@ -139,6 +229,23 @@ def _validate_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if extra is not None and not isinstance(extra, dict):
         raise ValueError("field 'extra' must be an object")
 
+    chat_id_override = payload.get("chat_id")
+    if chat_id_override is not None:
+        if not isinstance(chat_id_override, str) or not _is_valid_chat_target(
+            chat_id_override.strip()
+        ):
+            raise ValueError("field 'chat_id' must be a valid Telegram chat target")
+        chat_id_override = chat_id_override.strip()
+
+    chat_alias = payload.get("chat_alias")
+    if chat_alias is not None:
+        if not isinstance(chat_alias, str) or not _ALIAS_RE.fullmatch(chat_alias.strip()):
+            raise ValueError("field 'chat_alias' must be a valid alias string")
+        chat_alias = chat_alias.strip()
+
+    if chat_id_override is not None and chat_alias is not None:
+        raise ValueError("fields 'chat_id' and 'chat_alias' are mutually exclusive")
+
     return {
         "project": project.strip(),
         "env": env.strip(),
@@ -148,7 +255,31 @@ def _validate_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "template": template,
         "tags": tags,
         "extra": extra,
+        "chat_id": chat_id_override,
+        "chat_alias": chat_alias,
     }
+
+
+def _resolve_chat_id(
+    default_chat_id: str, aliases: dict[str, str], payload: dict[str, Any]
+) -> str:
+    chat_id_override = payload.get("chat_id")
+    if chat_id_override:
+        return str(chat_id_override)
+
+    chat_alias = payload.get("chat_alias")
+    if not chat_alias:
+        return default_chat_id
+
+    resolved = aliases.get(str(chat_alias))
+    if resolved is None:
+        raise ValueError(f"unknown chat alias: {chat_alias}")
+
+    return resolved
+
+
+def _is_valid_chat_target(value: str) -> bool:
+    return bool(_CHAT_TARGET_RE.fullmatch(value))
 
 
 def _format_message(payload: dict[str, Any]) -> str:

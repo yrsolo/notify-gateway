@@ -28,7 +28,7 @@ Rollout:
 Rollback:
 - Revert template-specific changes in `src/handler.py`.
 
-## S5-T10 — Chat routing (chat_id override + aliases) ⏳
+## S5-T10 — Chat routing (chat_id override + aliases) ✅
 Goal: add optional routing of notifications to specific Telegram chats by alias/override.
 
 Files to create/change:
@@ -37,12 +37,12 @@ Files to create/change:
 - docs (if contract changes)
 
 Acceptance criteria:
-- [ ] Optional payload override for target chat is supported with strict validation.
-- [ ] Alias mapping can be configured via env var.
-- [ ] Default chat remains unchanged when override is not provided.
-- [ ] Unit tests cover routing success/fallback/rejection.
+- [x] Optional payload override for target chat is supported with strict validation.
+- [x] Alias mapping can be configured via env var.
+- [x] Default chat remains unchanged when override is not provided.
+- [x] Unit tests cover routing success/fallback/rejection.
 
-## S5-T11 — Help mode/endpoint (documented usage + examples) ⏳
+## S5-T11 — Help mode/endpoint (documented usage + examples) ✅
 Goal: add lightweight help behavior for API consumers.
 
 Files to create/change:
@@ -51,6 +51,6 @@ Files to create/change:
 - tests
 
 Acceptance criteria:
-- [ ] Help mode available via request flag/path.
-- [ ] Returns JSON with required fields and examples.
-- [ ] Covered by unit tests.
+- [x] Help mode available via request flag/path.
+- [x] Returns JSON with required fields and examples.
+- [x] Covered by unit tests.

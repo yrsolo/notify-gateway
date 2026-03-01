@@ -76,3 +76,24 @@ pytest -q
 - `notification` — формат по умолчанию (уровень, проект/env, title, message, tags/extra).
 - `error` — акцентированный формат ошибки с заголовком `🚨 ERROR`.
 - `raw` — отправляет только `message` (HTML-escaping сохраняется).
+
+Дополнительно поддерживается routing в конкретный чат:
+- `chat_id` — прямой override Telegram chat target (например, `-100123456789` или `@alerts_room`).
+- `chat_alias` — алиас чата, резолвится из env `TELEGRAM_CHAT_ALIASES`.
+- `chat_id` и `chat_alias` взаимоисключающие поля.
+
+Формат `TELEGRAM_CHAT_ALIASES`:
+
+```text
+ops=-100123456789,alerts=@alerts_room
+```
+
+Если routing-поля отсутствуют, используется дефолтный `TELEGRAM_CHAT_ID`.
+
+## Help mode
+
+Поддерживаются два способа получить краткую справку по контракту:
+- `GET /notify/help`
+- `POST /notify` с payload `{ "help": true }`
+
+Ответ содержит `required_fields`, `optional_fields` и примеры payload.
