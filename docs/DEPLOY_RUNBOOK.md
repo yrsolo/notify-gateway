@@ -14,11 +14,11 @@
 - `TELEGRAM_CHAT_ID` (можно хранить как variable или secret)
 
 ### GitHub Actions Secrets
-- `YC_SA_JSON_CREDENTIALS` (service account key JSON)
-- `NOTIFY_API_KEYS` (runtime ключи функции)
-- `TELEGRAM_BOT_TOKEN`
-- `NOTIFY_API_KEY` (для smoke-check запроса)
-- `TELEGRAM_CHAT_ID` (если не задан как variable)
+- `YC_SA_JSON_CREDENTIALS` — JSON ключ service account (raw JSON или base64 от JSON).
+- `NOTIFY_API_KEYS` — runtime ключ(и) функции. Пример: `prod-key-1,prod-key-2`.
+- `TELEGRAM_BOT_TOKEN` — токен Telegram-бота формата `123456789:AA...`.
+- `NOTIFY_API_KEY` — один рабочий ключ для smoke-check запроса к `/notify`.
+- `TELEGRAM_CHAT_ID` (если не задан как variable) — числовой id чата, например `-1001234567890`.
 
 > Значения секретов не должны выводиться в лог.
 
@@ -36,8 +36,8 @@
    - для `push` — автоматически включает dry-run, если не хватает runtime-секретов.
 2. Валидирует обязательные переменные.
 3. Деплоит Function через `yc-actions/yc-sls-function@v4` (только если `DRY_RUN=false`).
-4. Устанавливает YC CLI, резолвит `YC_FUNCTION_ID`.
-5. Запускает bootstrap `infra/scripts/yc_bootstrap_notify_endpoint.sh` и получает `NOTIFY_ENDPOINT`.
+4. Получает `YC_IAM_TOKEN` из `YC_SA_JSON_CREDENTIALS` без использования `yc` CLI.
+5. Запускает Python bootstrap `tools/yc_bootstrap.py` и получает `NOTIFY_ENDPOINT` (+ gateway metadata).
 6. Запускает `infra/scripts/smoke_notify.sh` (в dry-run или реальном режиме).
 
 ## 3) Bootstrap YC_API_GW_NAME и NOTIFY_ENDPOINT
@@ -45,17 +45,21 @@
 Если gateway еще не создан или значения переменных утеряны, их можно восстановить:
 
 ```bash
-YC_FOLDER_ID=<folder-id> \
-YC_FUNCTION_ID=<function-id> \
-YC_SERVICE_ACCOUNT_ID=<sa-id> \
-LOCKBOX_SECRET_NAME=NG \
-infra/scripts/yc_bootstrap_notify_endpoint.sh
+python tools/yc_bootstrap.py \
+  --folder-id <folder-id> \
+  --gateway-name <gw-name> \
+  --function-name <function-name> \
+  --service-account-id <sa-id> \
+  --spec-template infra/apigw.yaml \
+  --spec-rendered build/apigw.rendered.yaml \
+  --iam-token <iam-token> \
+  --output-env
 ```
 
-Скрипт:
+Bootstrap tool:
 - создаёт/обновляет API Gateway `notify-gateway-gw` (или имя из `YC_API_GW_NAME`);
-- печатает `YC_API_GW_NAME=<...>` и `NOTIFY_ENDPOINT=<...>`;
-- при `LOCKBOX_SECRET_ID`/`LOCKBOX_SECRET_NAME` добавляет новую версию секрета в Lockbox.
+- рендерит `infra/apigw.yaml` в файл `build/apigw.rendered.yaml`;
+- печатает env-пары (`YC_API_GW_NAME`, `YC_API_GW_ID`, `NOTIFY_ENDPOINT`) для экспорта в CI.
 
 Если задан `NOTIFY_PUBLIC_BASE_URL`, то endpoint формируется как `<NOTIFY_PUBLIC_BASE_URL>/notify`.
 
@@ -68,8 +72,15 @@ pytest -q
 YC_FOLDER_ID=<folder-id> YC_FUNCTION_NAME=notify-gateway \
 infra/scripts/yc_deploy_function.sh --dry-run
 
-YC_FOLDER_ID=<folder-id> YC_API_GW_NAME=notify-gateway-gw YC_FUNCTION_ID=<function-id> YC_SERVICE_ACCOUNT_ID=<sa-id> \
-infra/scripts/yc_apply_apigw.sh --dry-run
+python tools/yc_bootstrap.py \
+  --folder-id <folder-id> \
+  --gateway-name notify-gateway-gw \
+  --function-name notify-gateway \
+  --service-account-id <sa-id> \
+  --spec-template infra/apigw.yaml \
+  --spec-rendered build/apigw.rendered.yaml \
+  --iam-token <iam-token> \
+  --dry-run
 
 NOTIFY_ENDPOINT=https://example/notify NOTIFY_API_KEY=dummy \
 infra/scripts/smoke_notify.sh --dry-run
@@ -89,8 +100,8 @@ infra/scripts/smoke_notify.sh --dry-run
    yc serverless function version list --function-name "$YC_FUNCTION_NAME" --folder-id "$YC_FOLDER_ID"
    ```
 2. Выбрать предыдущую стабильную версию.
-3. Обновить API Gateway spec на стабильную интеграцию.
-4. Применить spec и выполнить smoke-check.
+3. Обновить API Gateway spec на стабильную интеграцию через `tools/yc_bootstrap.py` (с ref на стабильный `infra/apigw.yaml`).
+4. Выполнить smoke-check.
 
 ### 5.3 API Gateway rollback
 1. Вернуть предыдущую стабильную спецификацию:
@@ -99,8 +110,14 @@ infra/scripts/smoke_notify.sh --dry-run
    ```
 2. Применить её:
    ```bash
-   YC_FOLDER_ID=<folder-id> YC_API_GW_NAME=<gw-name> YC_FUNCTION_ID=<function-id> YC_SERVICE_ACCOUNT_ID=<sa-id> \
-   infra/scripts/yc_apply_apigw.sh
+   python tools/yc_bootstrap.py \
+     --folder-id <folder-id> \
+     --gateway-name <gw-name> \
+     --function-name <function-name> \
+     --service-account-id <sa-id> \
+     --spec-template infra/apigw.yaml \
+     --spec-rendered build/apigw.rendered.yaml \
+     --iam-token <iam-token>
    ```
 3. Выполнить smoke-check и проверить логи.
 
