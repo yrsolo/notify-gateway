@@ -199,6 +199,8 @@ def _load_retry_config() -> tuple[int, float]:
 
 def _get_header(event: dict[str, Any], key: str) -> str:
     headers = event.get("headers") or {}
+    if not isinstance(headers, dict):
+        return ""
     for header_name, header_value in headers.items():
         if header_name.lower() == key.lower():
             return str(header_value)

@@ -814,3 +814,25 @@ Stage 6 — Reliability & polish.
 
 ### Next
 - Выполнить S6-T12C: расширить контрактные и edge-case тесты.
+
+## 2026-03-01 — S6-T12C
+
+### Stage
+Stage S6 (P2) — Reliability & polish.
+
+### Done
+- Завершён S6-T12C: расширены контрактные/edge-case тесты и закрыты критерии приёмки.
+- Добавлены тесты для corner-cases:
+  - невалидный формат `headers` (не dict) и корректный 401 без падения;
+  - `help`-mode приоритетнее авторизации (GET `/notify/help` и payload `{"help": true}`);
+  - base64 ветка: невалидный base64 -> 400, валидный base64 JSON -> 200;
+  - валидация retry env: нечисловой `TELEGRAM_RETRY_BACKOFF_SECONDS` -> 500;
+  - стабильность response shape для success/error (`statusCode`, `headers`, `body`).
+- В `src/handler.py` усилена устойчивость `_get_header`: при не-dict `headers` теперь безопасно возвращается пустое значение.
+- Локальные проверки пройдены: `ruff check .`, `pytest -q`.
+
+### Blockers
+- Нет.
+
+### Next
+- Взять следующую задачу S6 backlog (если появится в `CURRENT_STAGE_TASKS.md`) или зафиксировать переход стадии по решению владельца.

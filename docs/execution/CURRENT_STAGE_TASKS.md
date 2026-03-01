@@ -44,10 +44,18 @@ Test plan:
 - [x] `ruff check .`
 - [x] `pytest -q`
 
-## S6-T12C — Expand contract tests and edge-case coverage ⏳
+## S6-T12C — Expand contract tests and edge-case coverage ✅
 Goal: harden API contract with additional negative/edge tests.
 
+Files changed:
+- `src/handler.py`
+- `tests/test_handler.py`
+
 Acceptance criteria:
-- [ ] Add tests for malformed headers/body corner cases and base64 decoding.
-- [ ] Add tests for help-mode precedence and auth boundaries.
-- [ ] Add tests for retry-env validation and response shape stability.
+- [x] Add tests for malformed headers/body corner cases and base64 decoding.
+- [x] Add tests for help-mode precedence and auth boundaries.
+- [x] Add tests for retry-env validation and response shape stability.
+
+Test plan:
+- [x] `ruff check .`
+- [x] `pytest -q`
