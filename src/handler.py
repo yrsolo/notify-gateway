@@ -3,6 +3,7 @@ import html
 import json
 import os
 import re
+import time
 from typing import Any
 from urllib import error, request
 
@@ -28,6 +29,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         token = _required_env("TELEGRAM_BOT_TOKEN")
         chat_id = _required_env("TELEGRAM_CHAT_ID")
         chat_aliases = _load_chat_aliases()
+        retry_max_attempts, retry_backoff_seconds = _load_retry_config()
     except ValueError as exc:
         return _response(500, {"ok": False, "error": str(exc)})
 
@@ -53,6 +55,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             token=token,
             chat_id=resolved_chat_id,
             text=message_text,
+            retry_max_attempts=retry_max_attempts,
+            retry_backoff_seconds=retry_backoff_seconds,
         )
     except RuntimeError as exc:
         return _response(502, {"ok": False, "error": str(exc)})
@@ -151,6 +155,29 @@ def _load_chat_aliases() -> dict[str, str]:
         aliases[alias] = target
 
     return aliases
+
+
+def _load_retry_config() -> tuple[int, float]:
+    max_attempts_raw = os.getenv("TELEGRAM_RETRY_MAX_ATTEMPTS", "1").strip()
+    backoff_raw = os.getenv("TELEGRAM_RETRY_BACKOFF_SECONDS", "0").strip()
+
+    try:
+        max_attempts = int(max_attempts_raw)
+    except ValueError as exc:
+        raise ValueError("TELEGRAM_RETRY_MAX_ATTEMPTS must be an integer") from exc
+
+    if max_attempts < 1 or max_attempts > 10:
+        raise ValueError("TELEGRAM_RETRY_MAX_ATTEMPTS must be between 1 and 10")
+
+    try:
+        backoff_seconds = float(backoff_raw)
+    except ValueError as exc:
+        raise ValueError("TELEGRAM_RETRY_BACKOFF_SECONDS must be a number") from exc
+
+    if backoff_seconds < 0:
+        raise ValueError("TELEGRAM_RETRY_BACKOFF_SECONDS must be >= 0")
+
+    return max_attempts, backoff_seconds
 
 
 def _get_header(event: dict[str, Any], key: str) -> str:
@@ -345,7 +372,13 @@ def _format_error_message(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _send_telegram_message(token: str, chat_id: str, text: str) -> int:
+def _send_telegram_message(
+    token: str,
+    chat_id: str,
+    text: str,
+    retry_max_attempts: int,
+    retry_backoff_seconds: float,
+) -> int:
     api_url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = json.dumps(
         {
@@ -363,26 +396,71 @@ def _send_telegram_message(token: str, chat_id: str, text: str) -> int:
         method="POST",
     )
 
-    try:
-        with request.urlopen(req, timeout=10) as response:
-            raw_body = response.read().decode("utf-8")
-    except error.URLError as exc:
-        raise RuntimeError(f"telegram request failed: {exc.reason}")
+    for attempt in range(1, retry_max_attempts + 1):
+        should_retry = False
+        retry_delay = retry_backoff_seconds * attempt
 
-    try:
-        parsed = json.loads(raw_body)
-    except json.JSONDecodeError:
-        raise RuntimeError("telegram response is not valid JSON")
+        try:
+            with request.urlopen(req, timeout=10) as response:
+                raw_body = response.read().decode("utf-8")
+        except error.URLError as exc:
+            err_message = f"telegram request failed: {exc.reason}"
+            should_retry = True
+        else:
+            try:
+                parsed = json.loads(raw_body)
+            except json.JSONDecodeError as exc:
+                raise RuntimeError("telegram response is not valid JSON") from exc
 
-    if not parsed.get("ok"):
-        description = parsed.get("description", "unknown telegram error")
-        raise RuntimeError(f"telegram API error: {description}")
+            if not parsed.get("ok"):
+                err_message, should_retry, retry_after = _map_telegram_error(parsed)
+                if retry_after is not None:
+                    retry_delay = float(retry_after)
+            else:
+                message_id = ((parsed.get("result") or {}).get("message_id"))
+                if not isinstance(message_id, int):
+                    raise RuntimeError("telegram response does not contain message_id")
+                return message_id
 
-    message_id = ((parsed.get("result") or {}).get("message_id"))
-    if not isinstance(message_id, int):
-        raise RuntimeError("telegram response does not contain message_id")
+        if should_retry and attempt < retry_max_attempts:
+            time.sleep(retry_delay)
+            continue
 
-    return message_id
+        raise RuntimeError(err_message)
+
+    raise RuntimeError("telegram request failed after retries")
+
+
+def _map_telegram_error(parsed: dict[str, Any]) -> tuple[str, bool, int | None]:
+    description = str(parsed.get("description", "unknown telegram error"))
+    error_code = parsed.get("error_code")
+
+    if error_code == 400 and "chat not found" in description.lower():
+        return (
+            "telegram API error: chat not found (check TELEGRAM_CHAT_ID/chat routing)",
+            False,
+            None,
+        )
+
+    if error_code == 401:
+        return ("telegram API error: unauthorized (check TELEGRAM_BOT_TOKEN)", False, None)
+
+    if error_code == 403:
+        return (
+            "telegram API error: forbidden (bot has no access to target chat)",
+            False,
+            None,
+        )
+
+    if error_code == 429:
+        retry_after = (parsed.get("parameters") or {}).get("retry_after")
+        safe_retry_after = retry_after if isinstance(retry_after, int) and retry_after > 0 else None
+        return ("telegram API error: rate limited", True, safe_retry_after)
+
+    if isinstance(error_code, int) and error_code >= 500:
+        return (f"telegram API error: temporary upstream failure ({error_code})", True, None)
+
+    return (f"telegram API error: {description}", False, None)
 
 
 def _response(status_code: int, body: dict[str, Any]) -> dict[str, Any]:

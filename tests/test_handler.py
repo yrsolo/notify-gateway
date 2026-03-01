@@ -1,4 +1,5 @@
 import json
+from urllib import error
 from urllib import request
 
 import handler
@@ -417,3 +418,129 @@ def test_help_mode_via_payload_flag_without_auth():
     body = json.loads(result["body"])
     assert body["ok"] is True
     assert "minimal" in body["examples"]
+
+
+def test_retry_on_rate_limit_then_success(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+    monkeypatch.setenv("TELEGRAM_RETRY_MAX_ATTEMPTS", "2")
+    monkeypatch.setenv("TELEGRAM_RETRY_BACKOFF_SECONDS", "0")
+
+    calls = {"count": 0}
+
+    class _RateLimitedResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error_code": 429,
+                    "description": "Too Many Requests",
+                    "parameters": {"retry_after": 0},
+                }
+            ).encode("utf-8")
+
+    class _SuccessResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def read(self):
+            return json.dumps({"ok": True, "result": {"message_id": 790}}).encode("utf-8")
+
+    def _fake_urlopen(req, timeout):
+        del req, timeout
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return _RateLimitedResponse()
+        return _SuccessResponse()
+
+    monkeypatch.setattr(request, "urlopen", _fake_urlopen)
+    monkeypatch.setattr(handler.time, "sleep", lambda *_args, **_kwargs: None)
+
+    event = _event({"project": "billing", "title": "Lag", "message": "msg"})
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    assert json.loads(result["body"])["telegram_message_id"] == 790
+    assert calls["count"] == 2
+
+
+def test_retry_on_network_error_respects_attempt_limit(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+    monkeypatch.setenv("TELEGRAM_RETRY_MAX_ATTEMPTS", "2")
+    monkeypatch.setenv("TELEGRAM_RETRY_BACKOFF_SECONDS", "0")
+
+    calls = {"count": 0}
+
+    def _fake_urlopen(req, timeout):
+        del req, timeout
+        calls["count"] += 1
+        raise error.URLError("temporary network error")
+
+    monkeypatch.setattr(request, "urlopen", _fake_urlopen)
+    monkeypatch.setattr(handler.time, "sleep", lambda *_args, **_kwargs: None)
+
+    event = _event({"project": "billing", "title": "Lag", "message": "msg"})
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 502
+    assert "telegram request failed: temporary network error" in json.loads(result["body"])["error"]
+    assert calls["count"] == 2
+
+
+def test_telegram_error_mapping_forbidden(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    class _ForbiddenResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error_code": 403,
+                    "description": "Forbidden: bot was kicked from the supergroup chat",
+                }
+            ).encode("utf-8")
+
+    def _fake_urlopen(req, timeout):
+        del req, timeout
+        return _ForbiddenResponse()
+
+    monkeypatch.setattr(request, "urlopen", _fake_urlopen)
+
+    event = _event({"project": "billing", "title": "Lag", "message": "msg"})
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 502
+    assert "bot has no access to target chat" in json.loads(result["body"])["error"]
+
+
+def test_invalid_retry_env_returns_server_error(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+    monkeypatch.setenv("TELEGRAM_RETRY_MAX_ATTEMPTS", "0")
+
+    event = _event({"project": "billing", "title": "Lag", "message": "msg"})
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 500
+    assert "TELEGRAM_RETRY_MAX_ATTEMPTS must be between 1 and 10" in json.loads(result["body"])["error"]
