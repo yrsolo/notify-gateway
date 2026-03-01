@@ -109,12 +109,39 @@ jobs:
           set -euo pipefail
 
           KEY_FILE="$RUNNER_TEMP/yc-sa-key.json"
-          printf '%s' "${YC_SA_JSON_CREDENTIALS}" > "$KEY_FILE"
+          KEY_FILE="$KEY_FILE" YC_SA_JSON_CREDENTIALS="${YC_SA_JSON_CREDENTIALS}" python - <<'PYKEY'
+          import base64
+          import json
+          import os
+
+          raw_value = os.environ.get("YC_SA_JSON_CREDENTIALS", "").strip()
+          if not raw_value:
+              raise SystemExit("YC_SA_JSON_CREDENTIALS is empty")
+
+          key_obj = None
+          try:
+              key_obj = json.loads(raw_value)
+          except json.JSONDecodeError:
+              pass
+
+          if key_obj is None:
+              try:
+                  decoded = base64.b64decode(raw_value, validate=True).decode("utf-8")
+                  key_obj = json.loads(decoded)
+              except Exception as exc:  # noqa: BLE001
+                  raise SystemExit(
+                      "YC_SA_JSON_CREDENTIALS must be raw JSON or base64-encoded JSON"
+                  ) from exc
+
+          with open(os.environ["KEY_FILE"], "w", encoding="utf-8") as fh:
+              json.dump(key_obj, fh)
+          PYKEY
 
           IAM_TOKEN=$(KEY_FILE="$KEY_FILE" python - <<'PYTOKEN'
           import json
           import os
           import urllib.request
+          import urllib.error
 
           key_file = os.environ["KEY_FILE"]
           with open(key_file, "r", encoding="utf-8") as fh:
@@ -127,8 +154,12 @@ jobs:
               headers={"Content-Type": "application/json"},
               method="POST",
           )
-          with urllib.request.urlopen(req, timeout=60) as resp:
-              print(json.load(resp).get("iamToken", ""))
+          try:
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  print(json.load(resp).get("iamToken", ""))
+          except urllib.error.HTTPError as err:
+              body = err.read().decode("utf-8", errors="replace")
+              raise SystemExit(f"IAM token exchange failed ({err.code}): {body}") from err
           PYTOKEN
           )
 
