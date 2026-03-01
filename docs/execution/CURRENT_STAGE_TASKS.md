@@ -1,10 +1,10 @@
-# Current Stage — S5 (P1): Product features
+# Current Stage — S6 (P2): Reliability & polish
 
 Owner: engineering  
-Target: add small product improvements without turning handler into a monolith.
+Target: improve reliability and maintainability after P0/P1 stabilization.
 
-## S5-T09 — Message templates (notification / error / raw) ✅
-Goal: support selectable message format via payload field `template`.
+## S6-T12A — Telegram error mapping + optional retry/backoff ✅
+Goal: make Telegram failure responses more actionable and add safe retry for temporary failures.
 
 Files changed:
 - `src/handler.py`
@@ -12,45 +12,34 @@ Files changed:
 - `README.md`
 
 Acceptance criteria:
-- [x] Payload supports `template` with values `notification` (default), `error`, `raw`.
-- [x] `notification` keeps existing formatting behavior.
-- [x] `error` uses explicit error header and context formatting.
-- [x] `raw` sends only message text (escaped), without project/title wrappers.
-- [x] Invalid template returns `400` with validation error.
+- [x] Telegram API error mapping returns clearer user-facing errors for common classes (401/403/400 chat not found/429/5xx).
+- [x] Optional retry/backoff is configurable via env vars and defaults to no retries.
+- [x] Retry applies only to temporary failures (network/429/5xx) and does not retry permanent auth/access errors.
+- [x] Unit tests cover retry and mapping behavior.
 
 Test plan:
-- [x] `pytest -q`
 - [x] `ruff check .`
+- [x] `pytest -q`
 
 Rollout:
-- Backward-compatible: default template remains `notification`.
+- Backward-compatible defaults (`TELEGRAM_RETRY_MAX_ATTEMPTS=1`, `TELEGRAM_RETRY_BACKOFF_SECONDS=0`).
 
 Rollback:
-- Revert template-specific changes in `src/handler.py`.
+- Revert retry/mapping changes in `src/handler.py` and related tests.
 
-## S5-T10 — Chat routing (chat_id override + aliases) ✅
-Goal: add optional routing of notifications to specific Telegram chats by alias/override.
-
-Files to create/change:
-- `src/handler.py`
-- `tests/test_handler.py`
-- docs (if contract changes)
+## S6-T12B — Structured logs + request_id correlation ⏳
+Goal: add lightweight structured logs and request correlation id.
 
 Acceptance criteria:
-- [x] Optional payload override for target chat is supported with strict validation.
-- [x] Alias mapping can be configured via env var.
-- [x] Default chat remains unchanged when override is not provided.
-- [x] Unit tests cover routing success/fallback/rejection.
+- [ ] Handler logs key lifecycle events in stable JSON shape.
+- [ ] Request id is accepted from header or generated if absent.
+- [ ] Error logs include request id and safe context without secrets.
+- [ ] Unit tests validate request id propagation.
 
-## S5-T11 — Help mode/endpoint (documented usage + examples) ✅
-Goal: add lightweight help behavior for API consumers.
-
-Files to create/change:
-- `src/handler.py`
-- docs (README / runbook)
-- tests
+## S6-T12C — Expand contract tests and edge-case coverage ⏳
+Goal: harden API contract with additional negative/edge tests.
 
 Acceptance criteria:
-- [x] Help mode available via request flag/path.
-- [x] Returns JSON with required fields and examples.
-- [x] Covered by unit tests.
+- [ ] Add tests for malformed headers/body corner cases and base64 decoding.
+- [ ] Add tests for help-mode precedence and auth boundaries.
+- [ ] Add tests for retry-env validation and response shape stability.

@@ -757,3 +757,32 @@ Stage 5 — Product features.
 
 ### Next
 - Зафиксировать завершение Stage 5 и подготовить следующий backlog работ.
+
+## 2026-03-01 — S6-T12A
+
+### Stage
+Stage 6 — Reliability & polish.
+
+### Done
+- В `src/handler.py` добавлен маппинг ошибок Telegram API на более понятные сообщения:
+  - `400 chat not found`;
+  - `401 unauthorized`;
+  - `403 forbidden`;
+  - `429 rate limited`;
+  - `5xx temporary upstream failure`.
+- Добавлен опциональный retry/backoff для отправки в Telegram:
+  - `TELEGRAM_RETRY_MAX_ATTEMPTS` (по умолчанию `1`);
+  - `TELEGRAM_RETRY_BACKOFF_SECONDS` (по умолчанию `0`);
+  - retry только для временных ошибок (URLError/429/5xx).
+- Добавлены unit-тесты на:
+  - retry после `429` с последующим успехом;
+  - ограничение попыток при сетевой ошибке;
+  - корректный маппинг `403`;
+  - валидацию retry-env.
+- Обновлены `README.md` и `docs/execution/CURRENT_STAGE_TASKS.md`.
+
+### Blockers
+- Нет.
+
+### Next
+- Выполнить S6-T12B: structured logs + request_id correlation.
