@@ -55,7 +55,7 @@ Acceptance criteria:
 - [x] Smoke test checks HTTP status + basic JSON shape.
 - [x] Smoke test runs after deploy.
 
-## S4-T08D — Document secrets/env + rollback
+## S4-T08D — Document secrets/env + rollback ✅
 Goal: make it obvious what secrets are needed and how to recover from failures.
 
 Files to create/change:
@@ -63,5 +63,5 @@ Files to create/change:
 - Update README or docs if such section already exists.
 
 Acceptance criteria:
-- [ ] List of required GH secrets and example values format.
-- [ ] Clear rollback instructions.
+- [x] List of required GH secrets and example values format.
+- [x] Clear rollback instructions.

@@ -673,3 +673,23 @@ Stage 4 — Production readiness (S4: Stabilize CI/Deploy).
 
 ### Next
 - Выполнить S4-T08D: документировать secrets/env и rollback для обновлённого deploy-потока.
+
+---
+
+## 2026-03-01 — S4-T08D
+
+### Stage
+Stage 4 — Production readiness.
+
+### Done
+- Обновлён `docs/DEPLOY_RUNBOOK.md` под актуальный CI-поток без `yc` CLI:
+  - добавлены форматы обязательных GitHub Secrets с примерами значений;
+  - обновлено описание deploy workflow (IAM token + `tools/yc_bootstrap.py`);
+  - обновлены команды bootstrap/dry-run и rollback-шаги под Python bootstrap tool.
+- Обновлён статус задачи `S4-T08D` в `docs/execution/CURRENT_STAGE_TASKS.md` (критерии приёмки отмечены выполненными).
+
+### Blockers
+- Нет.
+
+### Next
+- Закрыть Stage 4 после проверки оставшихся DoD стадии и зафиксировать переход/итоговый статус.
