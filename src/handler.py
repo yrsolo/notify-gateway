@@ -6,6 +6,7 @@ from typing import Any
 from urllib import error, request
 
 _ALLOWED_LEVELS = {"info", "warning", "error"}
+_ALLOWED_TEMPLATES = {"notification", "error", "raw"}
 _LEVEL_EMOJI = {
     "info": "🟩",
     "warning": "🟨",
@@ -125,6 +126,10 @@ def _validate_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(level, str) or level not in _ALLOWED_LEVELS:
         raise ValueError("field 'level' must be one of: info, warning, error")
 
+    template = payload.get("template", "notification")
+    if not isinstance(template, str) or template not in _ALLOWED_TEMPLATES:
+        raise ValueError("field 'template' must be one of: notification, error, raw")
+
     tags = payload.get("tags")
     if tags is not None:
         if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
@@ -140,12 +145,24 @@ def _validate_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "level": level,
         "title": title.strip(),
         "message": message.strip(),
+        "template": template,
         "tags": tags,
         "extra": extra,
     }
 
 
 def _format_message(payload: dict[str, Any]) -> str:
+    template = payload["template"]
+    if template == "raw":
+        return html.escape(payload["message"])
+
+    if template == "error":
+        return _format_error_message(payload)
+
+    return _format_notification_message(payload)
+
+
+def _format_notification_message(payload: dict[str, Any]) -> str:
     emoji = _LEVEL_EMOJI[payload["level"]]
     header = (
         f"{emoji} {html.escape(payload['project'])} "
@@ -169,6 +186,30 @@ def _format_message(payload: dict[str, Any]) -> str:
             value_s = html.escape(str(value))
             extra_pairs.append(f"{key_s}={value_s}")
         lines.append(f"<i>extra:</i> {'; '.join(extra_pairs)}")
+
+    return "\n".join(lines)
+
+
+def _format_error_message(payload: dict[str, Any]) -> str:
+    header = f"🚨 <b>ERROR</b> {html.escape(payload['project'])} ({html.escape(payload['env'])})"
+    title = f"<b>{html.escape(payload['title'])}</b>"
+    message = html.escape(payload["message"])
+
+    lines = [header, title, message]
+
+    tags = payload.get("tags")
+    if tags:
+        escaped_tags = ", ".join(html.escape(tag) for tag in tags)
+        lines.append(f"<i>tags:</i> {escaped_tags}")
+
+    extra = payload.get("extra")
+    if extra:
+        extra_pairs = []
+        for key, value in extra.items():
+            key_s = html.escape(str(key))
+            value_s = html.escape(str(value))
+            extra_pairs.append(f"{key_s}={value_s}")
+        lines.append(f"<i>context:</i> {'; '.join(extra_pairs)}")
 
     return "\n".join(lines)
 
