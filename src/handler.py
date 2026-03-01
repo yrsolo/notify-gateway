@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+import uuid
 from typing import Any
 from urllib import error, request
 
@@ -21,7 +22,17 @@ _LEVEL_EMOJI = {
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     del context
 
+    request_id = _resolve_request_id(event)
+    _log_event(
+        "info",
+        "request_received",
+        request_id,
+        method=str(event.get("httpMethod", "")).upper() or None,
+        path=str(event.get("path", "")) or None,
+    )
+
     if _is_help_request(event):
+        _log_event("info", "help_response_returned", request_id)
         return _response(200, _help_response_body())
 
     try:
@@ -31,16 +42,19 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         chat_aliases = _load_chat_aliases()
         retry_max_attempts, retry_backoff_seconds = _load_retry_config()
     except ValueError as exc:
+        _log_event("error", "config_validation_failed", request_id, error=str(exc))
         return _response(500, {"ok": False, "error": str(exc)})
 
     auth_header = _get_header(event, "Authorization")
     if not _is_authorized(auth_header, api_keys):
+        _log_event("warning", "authorization_failed", request_id)
         return _response(401, {"ok": False, "error": "invalid API key"})
 
     try:
         payload = _parse_body(event)
         normalized = _validate_payload(payload)
     except ValueError as exc:
+        _log_event("warning", "request_validation_failed", request_id, error=str(exc))
         return _response(400, {"ok": False, "error": str(exc)})
 
     message_text = _format_message(normalized)
@@ -48,6 +62,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     try:
         resolved_chat_id = _resolve_chat_id(chat_id, chat_aliases, normalized)
     except ValueError as exc:
+        _log_event("warning", "chat_routing_failed", request_id, error=str(exc))
         return _response(400, {"ok": False, "error": str(exc)})
 
     try:
@@ -59,8 +74,10 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             retry_backoff_seconds=retry_backoff_seconds,
         )
     except RuntimeError as exc:
+        _log_event("error", "telegram_send_failed", request_id, error=str(exc))
         return _response(502, {"ok": False, "error": str(exc)})
 
+    _log_event("info", "request_succeeded", request_id, telegram_message_id=telegram_message_id)
     return _response(200, {"ok": True, "telegram_message_id": telegram_message_id})
 
 
@@ -187,6 +204,28 @@ def _get_header(event: dict[str, Any], key: str) -> str:
             return str(header_value)
     return ""
 
+
+
+def _resolve_request_id(event: dict[str, Any]) -> str:
+    request_id = _get_header(event, "X-Request-Id").strip()
+    if request_id:
+        return request_id[:128]
+    return uuid.uuid4().hex
+
+
+def _log_event(level: str, event: str, request_id: str, **context: Any) -> None:
+    safe_level = level if level in _ALLOWED_LEVELS else "info"
+    payload = {
+        "level": safe_level,
+        "event": event,
+        "request_id": request_id,
+    }
+
+    safe_context = {k: v for k, v in context.items() if v is not None}
+    if safe_context:
+        payload["context"] = safe_context
+
+    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 
 def _is_authorized(auth_header: str, keys: set[str]) -> bool:
     if not auth_header.startswith("Bearer "):
