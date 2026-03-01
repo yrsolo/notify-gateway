@@ -40,3 +40,14 @@
 ## 3) Текущее состояние
 
 Основной roadmap закрыт. Проект в режиме сопровождения: вносятся точечные изменения в automation и документацию.
+
+
+## 4) Maintenance backlog (новые product-request)
+
+Приоритет исполнения в maintenance-режиме:
+
+1. **P0**: исправление деплоя — убрать установку YC CLI в GitHub Actions и сохранить функциональность через API/скрипты.
+2. **P1**: продуктовые функции API — шаблоны сообщений (`notification`, `error`, `raw`), выбор чата (`chat_id`/alias), help-режим.
+3. **P2**: расширенный roadmap полезных улучшений (reliability/observability/security).
+
+Детализация задач и критериев приёмки ведётся в `docs/execution/CURRENT_STAGE_TASKS.md`.

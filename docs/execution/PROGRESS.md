@@ -564,3 +564,29 @@ Stage 4 — Production readiness (maintenance mode).
 
 ### Next
 - Поддерживать синхронизацию docs при каждом изменении deploy workflow/infra scripts.
+
+---
+
+## 2026-02-28 — Maintenance backlog reprioritization (deploy fix first)
+
+### Stage
+Stage 4 — Production readiness (maintenance mode).
+
+### Done
+- Пересобран и актуализирован backlog в `docs/execution/CURRENT_STAGE_TASKS.md` по новым product-request.
+- Введён приоритет задач:
+  1. `S4-T08 (P0)` — исправление деплоя: убрать зависимость от установки YC CLI в GitHub Actions при сохранении функциональности.
+  2. `S4-T09..S4-T11 (P1)` — шаблоны сообщений, выбор чата (id/alias), help-режим API.
+  3. `S4-T12 (P2)` — расширенный backlog полезных улучшений v2.
+- Зафиксированы критерии приёмки и артефакты проверки для всех новых задач.
+
+### Blockers
+- `git fetch origin && git rebase origin/main` недоступны в текущем контейнере, так как remote `origin` не настроен.
+- Владелец: владелец проекта/CI окружения.
+- Действия для снятия:
+  1. Добавить корректный remote `origin` в локальный clone.
+  2. Проверить доступ к `origin/main` (`git fetch origin`).
+- Критерий снятия: команда `git fetch origin` выполняется без ошибки.
+
+### Next
+- Взять в `in_progress` задачу `S4-T08 (P0)` и выполнить рефактор deploy workflow без YC CLI.
