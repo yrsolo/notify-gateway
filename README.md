@@ -58,3 +58,21 @@ pytest -q
 ```
 
 Эти же проверки выполняются в `.github/workflows/ci.yml` для pull request.
+
+
+## Формат запроса `POST /notify`
+
+Минимальный payload:
+
+```json
+{
+  "project": "billing",
+  "title": "Queue lag",
+  "message": "Queue > 1000"
+}
+```
+
+Дополнительно поддерживается поле `template`:
+- `notification` — формат по умолчанию (уровень, проект/env, title, message, tags/extra).
+- `error` — акцентированный формат ошибки с заголовком `🚨 ERROR`.
+- `raw` — отправляет только `message` (HTML-escaping сохраняется).

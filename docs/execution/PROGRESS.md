@@ -693,3 +693,23 @@ Stage 4 — Production readiness.
 
 ### Next
 - Закрыть Stage 4 после проверки оставшихся DoD стадии и зафиксировать переход/итоговый статус.
+
+## 2026-03-01 — S5-T09
+
+### Stage
+Stage 5 — Product features.
+
+### Done
+- Реализована поддержка поля `template` в `POST /notify`:
+  - `notification` (по умолчанию) — существующий формат сохранён;
+  - `error` — формат с заголовком `🚨 ERROR` и секцией `context`;
+  - `raw` — отправка только `message`.
+- Валидация payload расширена: некорректный `template` возвращает `400`.
+- Добавлены unit-тесты на `raw`/`error` шаблоны и reject invalid template.
+- README дополнен описанием формата payload и поля `template`.
+
+### Blockers
+- Нет.
+
+### Next
+- Выполнить S5-T10: chat routing (`chat_id` override + aliases).
