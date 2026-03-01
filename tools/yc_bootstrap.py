@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib import error, parse, request
 
-API_BASE = "https://serverless-api.cloud.yandex.net/apigateway/v1"
+API_BASE = "https://serverless-apigateway.api.cloud.yandex.net/apigateways/v1"
 FUNCTIONS_BASE = "https://serverless-functions.api.cloud.yandex.net/functions/v1"
 OP_BASE = "https://operation.api.cloud.yandex.net/operations"
 PLACEHOLDER_PATTERN = re.compile(r"<YOUR_[A-Z0-9_]+>")
