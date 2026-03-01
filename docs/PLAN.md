@@ -1,53 +1,36 @@
-# notify-gateway — план и факт выполнения
+# Notify Gateway — Roadmap
 
-> Документ синхронизирован с фактической реализацией в репозитории.
+This repository contains a small HTTP gateway for sending notifications to Telegram via Yandex Cloud Functions + API Gateway.
 
-## 1) MVP scope
+## Principles
+- Keep runtime simple (single handler, minimal deps).
+- Grow by small PRs (1–3 hours each).
+- Strong contracts: validation, stable error format, safe logging.
+- CI must stay reliable; deploy must be reproducible.
 
-- `POST /notify`
-- Bearer-авторизация по API key
-- валидация payload
-- пересылка в Telegram Bot API
-- деплой в Yandex Cloud Functions + API Gateway
-- хранение секретов вне git (GitHub Secrets/Lockbox)
+## Stages and priorities
 
-## 2) Статус roadmap
+### Stage S4 — Stabilize CI/Deploy (P0)
+Goal: remove dependency on `yc` CLI from GitHub Actions and make deploy/bootstrap less fragile.
 
-### Stage 0 — Discovery + readiness
-- [x] Подтверждены cloud/folder контексты и базовый доступ к YC API.
-- [x] Зафиксированы источники данных: YC API / Lockbox / repo config.
+Tasks (P0):
+- S4-T08A: Replace yc CLI bootstrap with Python-based YC API client
+- S4-T08B: Update GitHub Actions workflow to use the new bootstrap tool
+- S4-T08C: Add smoke-tests for bootstrap + endpoint
+- S4-T08D: Document new CI secrets/env and rollback procedure
 
-### Stage 1 — Repo hardening
-- [x] Подготовлена структура `infra/` и `*.env.example`.
-- [x] Добавлен `ci.yml` (lint + tests).
+### Stage S5 — Product features (P1)
+Goal: add small product improvements without turning handler into a monolith.
 
-### Stage 2 — Deploy automation
-- [x] Добавлены скрипты deploy-контура (`yc_collect_context.sh`, `yc_deploy_function.sh`, `yc_apply_apigw.sh`).
-- [x] Добавлен `deploy.yml` (`push main` + `workflow_dispatch`).
-- [x] Добавлен bootstrap endpoint/gateway (`yc_bootstrap_notify_endpoint.sh`).
+Tasks (P1):
+- S5-T09: Message templates (notification / error / raw)
+- S5-T10: Chat routing (chat_id override + aliases)
+- S5-T11: Help mode/endpoint (documented usage + examples)
 
-### Stage 3 — Runtime validation
-- [x] Реализован smoke-check (`infra/scripts/smoke_notify.sh`).
-- [x] Smoke-check встроен в deploy workflow.
-- [x] Документирован rollback runbook и observability/SLO-lite.
+### Stage S6 — Reliability & polish (P2)
+Goal: improve reliability and maintainability after P0/P1 are stable.
 
-### Stage 4 — Production readiness
-- [x] Описан регламент ротации секретов.
-- [x] Зафиксирована IAM least-privilege матрица.
-- [x] Добавлен on-call/ops playbook.
-- [x] Выполнены maintenance-улучшения deploy-контура (alias переменных, убран `rg` dependency, поддержка `NOTIFY_PUBLIC_BASE_URL`).
-
-## 3) Текущее состояние
-
-Основной roadmap закрыт. Проект в режиме сопровождения: вносятся точечные изменения в automation и документацию.
-
-
-## 4) Maintenance backlog (новые product-request)
-
-Приоритет исполнения в maintenance-режиме:
-
-1. **P0**: исправление деплоя — убрать установку YC CLI в GitHub Actions и сохранить функциональность через API/скрипты.
-2. **P1**: продуктовые функции API — шаблоны сообщений (`notification`, `error`, `raw`), выбор чата (`chat_id`/alias), help-режим.
-3. **P2**: расширенный roadmap полезных улучшений (reliability/observability/security).
-
-Детализация задач и критериев приёмки ведётся в `docs/execution/CURRENT_STAGE_TASKS.md`.
+Tasks (P2):
+- S6-T12A: Telegram error mapping + optional retry/backoff
+- S6-T12B: Structured logs + request_id correlation
+- S6-T12C: Expand contract tests and edge-case coverage
