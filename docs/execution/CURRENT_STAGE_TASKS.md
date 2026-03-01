@@ -44,16 +44,16 @@ Test plan:
 Rollback:
 - Revert workflow file.
 
-## S4-T08C — Add smoke tests for bootstrap + endpoint
+## S4-T08C — Add smoke tests for bootstrap + endpoint ✅
 Goal: ensure CI validates that endpoint exists and notification call works.
 
 Files to create/change:
-- `scripts/smoke_notify.sh` (or python) (plan-only)
+- `infra/scripts/smoke_notify.sh`
 - `docs/plan/S4-T08C.md` (new)
 
 Acceptance criteria:
-- [ ] Smoke test checks HTTP status + basic JSON shape.
-- [ ] Smoke test runs after deploy.
+- [x] Smoke test checks HTTP status + basic JSON shape.
+- [x] Smoke test runs after deploy.
 
 ## S4-T08D — Document secrets/env + rollback
 Goal: make it obvious what secrets are needed and how to recover from failures.
