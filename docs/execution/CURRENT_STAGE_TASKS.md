@@ -25,7 +25,7 @@ Rollout:
 Rollback:
 - Keep old yc CLI path until new path is proven in prod.
 
-## S4-T08B — Update GitHub Actions deploy workflow
+## S4-T08B — Update GitHub Actions deploy workflow ✅
 Goal: switch deploy workflow to call `tools/yc_bootstrap.py` instead of `yc` CLI scripts.
 
 Files to create/change:
@@ -33,9 +33,9 @@ Files to create/change:
 - `docs/plan/S4-T08B.md` (new)
 
 Acceptance criteria:
-- [ ] `yc` CLI installation removed from workflow.
-- [ ] Workflow exports same env outputs (NOTIFY_ENDPOINT etc).
-- [ ] Smoke-check step still runs.
+- [x] `yc` CLI installation removed from workflow.
+- [x] Workflow exports same env outputs (NOTIFY_ENDPOINT etc).
+- [x] Smoke-check step still runs.
 
 Test plan:
 - [ ] CI run on branch with dry-run.

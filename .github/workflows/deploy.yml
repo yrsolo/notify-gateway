@@ -77,8 +77,8 @@ jobs:
       - name: Install dependencies
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y jq zip
+          python -m pip install --upgrade pip
+
 
       - name: Deploy function version
         if: env.DRY_RUN != 'true'
@@ -102,56 +102,70 @@ jobs:
             build/**
             docs/**
 
-      - name: Install YC CLI
-        run: |
-          set -euo pipefail
-          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i "$HOME/yandex-cloud" -n
-          echo "YC_CLI_INITIALIZATION_SILENCE=true" >> "$GITHUB_ENV"
-          echo "$HOME/yandex-cloud/bin" >> "$GITHUB_PATH"
-
-      - name: Configure YC CLI auth via service account key
+      - name: Resolve IAM token
         env:
           YC_SA_JSON_CREDENTIALS: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
         run: |
           set -euo pipefail
+
           KEY_FILE="$RUNNER_TEMP/yc-sa-key.json"
           printf '%s' "${YC_SA_JSON_CREDENTIALS}" > "$KEY_FILE"
 
-          yc config profile create ci >/dev/null 2>&1 || true
-          yc config profile activate ci
-          yc config set service-account-key "$KEY_FILE"
-          yc config set folder-id "${YC_FOLDER_ID}"
+          IAM_TOKEN=$(KEY_FILE="$KEY_FILE" python - <<'PYTOKEN'
+import json
+import os
+import urllib.request
 
-      - name: Resolve function id
+key_file = os.environ["KEY_FILE"]
+with open(key_file, "r", encoding="utf-8") as fh:
+    key = json.load(fh)
+
+payload = json.dumps({"serviceAccountKey": key}).encode("utf-8")
+req = urllib.request.Request(
+    "https://iam.api.cloud.yandex.net/iam/v1/tokens",
+    data=payload,
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(req, timeout=60) as resp:
+    print(json.load(resp).get("iamToken", ""))
+PYTOKEN
+)
+
+          test -n "${IAM_TOKEN}" || { echo "Failed to obtain YC_IAM_TOKEN" >&2; exit 1; }
+          echo "::add-mask::${IAM_TOKEN}"
+          echo "YC_IAM_TOKEN=${IAM_TOKEN}" >> "$GITHUB_ENV"
+
+      - name: Bootstrap API Gateway + endpoint
         run: |
           set -euo pipefail
-          FUNCTION_ID=$(yc serverless function list --folder-id "${YC_FOLDER_ID}" --format json \
-            | jq -r --arg name "${YC_FUNCTION_NAME}" '.[] | select(.name == $name) | .id' \
-            | head -n1)
 
-          test -n "${FUNCTION_ID}" || { echo "Unable to resolve YC_FUNCTION_ID for ${YC_FUNCTION_NAME}" >&2; exit 1; }
-          echo "YC_FUNCTION_ID=${FUNCTION_ID}" >> "$GITHUB_ENV"
+          ARGS=(
+            --folder-id "${YC_FOLDER_ID}"
+            --gateway-name "${YC_API_GW_NAME}"
+            --function-name "${YC_FUNCTION_NAME}"
+            --service-account-id "${YC_SERVICE_ACCOUNT_ID}"
+            --spec-template "infra/apigw.yaml"
+            --spec-rendered "build/apigw.rendered.yaml"
+            --iam-token "${YC_IAM_TOKEN}"
+            --output-env
+          )
 
-      - name: Apply API Gateway spec and resolve endpoint
-        run: |
-          set -euo pipefail
-
-          if [[ "${DRY_RUN}" == "true" ]]; then
-            BOOTSTRAP_OUTPUT=$(infra/scripts/yc_bootstrap_notify_endpoint.sh --dry-run)
-          else
-            BOOTSTRAP_OUTPUT=$(infra/scripts/yc_bootstrap_notify_endpoint.sh)
+          if [[ -n "${NOTIFY_PUBLIC_BASE_URL:-}" ]]; then
+            ARGS+=(--public-base-url "${NOTIFY_PUBLIC_BASE_URL}")
           fi
 
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            ARGS+=(--dry-run)
+          fi
+
+          BOOTSTRAP_OUTPUT=$(python tools/yc_bootstrap.py "${ARGS[@]}")
           echo "${BOOTSTRAP_OUTPUT}"
 
-          GATEWAY_NAME=$(printf '%s\n' "${BOOTSTRAP_OUTPUT}" | awk -F= '/^YC_API_GW_NAME=/{print $2}' | tail -n1)
-          ENDPOINT=$(printf '%s\n' "${BOOTSTRAP_OUTPUT}" | awk -F= '/^NOTIFY_ENDPOINT=/{print $2}' | tail -n1)
-
-          test -n "${GATEWAY_NAME}" || { echo "Failed to resolve YC_API_GW_NAME from bootstrap output" >&2; exit 1; }
-          test -n "${ENDPOINT}" || { echo "Failed to resolve NOTIFY_ENDPOINT from bootstrap output" >&2; exit 1; }
-
-          echo "YC_API_GW_NAME=${GATEWAY_NAME}" >> "$GITHUB_ENV"
-          echo "NOTIFY_ENDPOINT=${ENDPOINT}" >> "$GITHUB_ENV"
+          while IFS='=' read -r key value; do
+            [[ -z "${key}" ]] && continue
+            echo "${key}=${value}" >> "$GITHUB_ENV"
+          done <<< "${BOOTSTRAP_OUTPUT}"
 
       - name: Smoke-check /notify
         env:

@@ -615,3 +615,36 @@ Stage 4 — Production readiness (S4: Stabilize CI/Deploy).
 
 ### Next
 - Выполнить S4-T08B: обновить deploy workflow для перехода на Python bootstrap utility.
+
+---
+
+## 2026-03-01 — S4-T08B
+
+### Stage
+Stage 4 — Production readiness (S4: Stabilize CI/Deploy).
+
+### Done
+- Добавлен `tools/yc_bootstrap.py` для bootstrap API Gateway через YC API без `yc` CLI:
+  - create/update gateway по имени;
+  - polling operation до `done`;
+  - резолв endpoint (`NOTIFY_PUBLIC_BASE_URL` или gateway domain);
+  - env-style outputs для GitHub Actions.
+- Обновлён `.github/workflows/deploy.yml`:
+  - удалены шаги установки/настройки `yc` CLI;
+  - добавлен шаг получения `YC_IAM_TOKEN` через IAM API из `YC_SA_JSON_CREDENTIALS`;
+  - заменён вызов shell-bootstrap на `python tools/yc_bootstrap.py`;
+  - сохранена передача `NOTIFY_ENDPOINT` в smoke-check.
+- Обновлены артефакты планирования/статусов:
+  - `docs/plan/S4-T08B.md` с фактом реализации;
+  - `docs/execution/CURRENT_STAGE_TASKS.md` (S4-T08B отмечена как выполненная).
+
+### Blockers
+- `origin` remote отсутствует в локальном git clone, поэтому обязательная синхронизация `git fetch origin && git rebase origin/main` не может быть выполнена в текущем окружении.
+- Владелец: владелец репозитория/CI окружения.
+- Действия для снятия:
+  1. Добавить корректный remote `origin` на upstream-репозиторий.
+  2. Убедиться, что у runner/пользователя есть доступ на чтение remote.
+- Критерий снятия: команда `git fetch origin` завершается без ошибок.
+
+### Next
+- Выполнить S4-T08C: добавить smoke-проверки bootstrap/endpoint в CI после деплоя.
