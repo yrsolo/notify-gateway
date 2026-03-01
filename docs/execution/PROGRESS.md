@@ -786,3 +786,31 @@ Stage 6 — Reliability & polish.
 
 ### Next
 - Выполнить S6-T12B: structured logs + request_id correlation.
+
+## 2026-03-01 — S6-T12B
+
+### Stage
+Stage 6 — Reliability & polish.
+
+### Done
+- В `src/handler.py` добавлено структурированное JSON-логирование ключевых этапов запроса:
+  - `request_received`;
+  - `help_response_returned`;
+  - `config_validation_failed`;
+  - `authorization_failed`;
+  - `request_validation_failed`;
+  - `chat_routing_failed`;
+  - `telegram_send_failed`;
+  - `request_succeeded`.
+- Добавлена корреляция `request_id`:
+  - берётся из заголовка `X-Request-Id`, если передан;
+  - иначе генерируется автоматически.
+- Ошибочные логи содержат безопасный `context` без вывода секретов.
+- В `tests/test_handler.py` добавлены тесты на propagation `request_id` и наличие безопасного контекста в error-логе.
+- Обновлён статус задачи в `docs/execution/CURRENT_STAGE_TASKS.md`.
+
+### Blockers
+- Нет.
+
+### Next
+- Выполнить S6-T12C: расширить контрактные и edge-case тесты.

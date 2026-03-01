@@ -544,3 +544,72 @@ def test_invalid_retry_env_returns_server_error(monkeypatch):
 
     assert result["statusCode"] == 500
     assert "TELEGRAM_RETRY_MAX_ATTEMPTS must be between 1 and 10" in json.loads(result["body"])["error"]
+
+
+def test_logs_include_request_id_from_header(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    captured_logs = []
+
+    def _fake_print(msg):
+        captured_logs.append(json.loads(msg))
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        def read(self):
+            return json.dumps({"ok": True, "result": {"message_id": 901}}).encode("utf-8")
+
+    def _fake_urlopen(req, timeout):
+        del req, timeout
+        return _FakeResponse()
+
+    monkeypatch.setattr("builtins.print", _fake_print)
+    monkeypatch.setattr(request, "urlopen", _fake_urlopen)
+
+    event = _event({"project": "billing", "title": "Lag", "message": "msg"})
+    event["headers"]["X-Request-Id"] = "req-123"
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 200
+    assert captured_logs[0]["event"] == "request_received"
+    assert captured_logs[0]["request_id"] == "req-123"
+    assert captured_logs[-1]["event"] == "request_succeeded"
+    assert captured_logs[-1]["request_id"] == "req-123"
+
+
+def test_error_logs_include_request_id_and_safe_context(monkeypatch):
+    monkeypatch.setenv("NOTIFY_API_KEYS", "test-key")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat")
+
+    captured_logs = []
+
+    def _fake_print(msg):
+        captured_logs.append(json.loads(msg))
+
+    def _fake_urlopen(req, timeout):
+        del req, timeout
+        raise error.URLError("network down")
+
+    monkeypatch.setattr("builtins.print", _fake_print)
+    monkeypatch.setattr(request, "urlopen", _fake_urlopen)
+
+    event = _event({"project": "billing", "title": "Lag", "message": "msg"})
+    event["headers"]["X-Request-Id"] = "req-fail"
+
+    result = handler.handler(event, None)
+
+    assert result["statusCode"] == 502
+    assert captured_logs[-1]["event"] == "telegram_send_failed"
+    assert captured_logs[-1]["request_id"] == "req-fail"
+    assert "context" in captured_logs[-1]
+    assert "error" in captured_logs[-1]["context"]
+    assert "token" not in json.dumps(captured_logs[-1])

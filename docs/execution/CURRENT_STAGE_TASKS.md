@@ -27,14 +27,22 @@ Rollout:
 Rollback:
 - Revert retry/mapping changes in `src/handler.py` and related tests.
 
-## S6-T12B — Structured logs + request_id correlation ⏳
+## S6-T12B — Structured logs + request_id correlation ✅
 Goal: add lightweight structured logs and request correlation id.
 
+Files changed:
+- `src/handler.py`
+- `tests/test_handler.py`
+
 Acceptance criteria:
-- [ ] Handler logs key lifecycle events in stable JSON shape.
-- [ ] Request id is accepted from header or generated if absent.
-- [ ] Error logs include request id and safe context without secrets.
-- [ ] Unit tests validate request id propagation.
+- [x] Handler logs key lifecycle events in stable JSON shape.
+- [x] Request id is accepted from header or generated if absent.
+- [x] Error logs include request id and safe context without secrets.
+- [x] Unit tests validate request id propagation.
+
+Test plan:
+- [x] `ruff check .`
+- [x] `pytest -q`
 
 ## S6-T12C — Expand contract tests and edge-case coverage ⏳
 Goal: harden API contract with additional negative/edge tests.
